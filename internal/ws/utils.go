@@ -1,4 +1,4 @@
-package main
+package ws
 
 import (
 	"context"
@@ -10,13 +10,13 @@ import (
 	"strings"
 )
 
-func computeAccept(key string) string {
+func ComputeAccept(key string) string {
 	const magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 	h := sha1.Sum([]byte(key + magic))
 	return base64.StdEncoding.EncodeToString(h[:])
 }
 
-func pickFirstToken(v string) string {
+func PickFirstToken(v string) string {
 	parts := strings.Split(v, ",")
 	if len(parts) == 0 {
 		return ""
@@ -24,7 +24,7 @@ func pickFirstToken(v string) string {
 	return strings.TrimSpace(parts[0])
 }
 
-func isNetClose(err error) bool {
+func IsNetClose(err error) bool {
 	if err == nil {
 		return false
 	}
