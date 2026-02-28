@@ -86,8 +86,8 @@ go run ./cmd/h3ws2h1ws-proxy \
   -listen :443 \
   -cert cert.pem \
   -key key.pem \
-  -backend ws://127.0.0.1:8080/ws \
-  -path /ws \
+  -backend ws://127.0.0.1:8080 \
+  -path "^/ws/(tcp|udp)$" \
   -metrics 127.0.0.1:9090
 ```
 
@@ -95,8 +95,9 @@ go run ./cmd/h3ws2h1ws-proxy \
 
 - `-listen` — UDP адрес HTTP/3 сервера (по умолчанию `:443`)
 - `-cert` / `-key` — TLS сертификат и ключ
-- `-backend` — URL backend WebSocket (`ws://` или `wss://`)
-- `-path` — путь для RFC9220 CONNECT (по умолчанию `/ws`)
+- `-backend` — URL backend WebSocket (`ws://` или `wss://`) без пути
+  - Путь и query всегда берутся из входящего запроса (например, `/ws/tcp?x=1` → `ws://backend/ws/tcp?x=1`).
+- `-path` — regexp-маска пути для RFC9220 CONNECT (по умолчанию `^/ws$`)
 - `-metrics` — адрес endpoint метрик (по умолчанию выключен; пустое значение отключает сервер метрик)
 - `-max-frame` — максимум байт в одном frame
 - `-max-message` — максимум байт в одном собранном сообщении
