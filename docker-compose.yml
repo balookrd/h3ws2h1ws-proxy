@@ -1,0 +1,59 @@
+version: "3.9"
+
+services:
+  h3ws-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: h3ws2h1ws-proxy
+    command: >
+      sh -c '
+      if [ ! -f /app/certs/cert.pem ] || [ ! -f /app/certs/key.pem ]; then
+        echo "Generating self-signed TLS certificate for local run...";
+        openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 365 \
+          -keyout /app/certs/key.pem \
+          -out /app/certs/cert.pem \
+          -subj "/CN=localhost";
+      fi;
+      /app/h3ws2h1ws-proxy
+        -listen :443
+        -cert /app/certs/cert.pem
+        -key /app/certs/key.pem
+        -backend ws://host.docker.internal:8080/ws
+        -path /ws
+        -metrics :9090
+      '
+    ports:
+      - "443:443/udp"
+      - "9090:9090"
+    volumes:
+      - ./certs:/app/certs
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: h3ws-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9091:9090"
+    depends_on:
+      - h3ws-proxy
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.1.4
+    container_name: h3ws-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
