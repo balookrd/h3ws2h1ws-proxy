@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"regexp"
+	"strings"
 	"time"
 
 	"h3ws2h1ws-proxy/internal/config"
@@ -27,6 +29,10 @@ func Run() error {
 	if backendURL.Scheme != "ws" && backendURL.Scheme != "wss" {
 		return fmt.Errorf("backend scheme must be ws or wss, got %q", backendURL.Scheme)
 	}
+	backendURL.Path = ""
+	backendURL.RawPath = ""
+	backendURL.RawQuery = ""
+	backendURL.Fragment = ""
 
 	if cfg.MetricsAddr != "" {
 		startMetricsServer(cfg.MetricsAddr)
@@ -35,7 +41,8 @@ func Run() error {
 	}
 
 	p := &proxy.Proxy{
-		Backend: backendURL,
+		Backend:    backendURL,
+		PathRegexp: cfg.PathRegexp,
 		Limits: config.Limits{
 			MaxFrameSize:   cfg.MaxFrame,
 			MaxMessageSize: cfg.MaxMessage,
@@ -46,10 +53,19 @@ func Run() error {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc(cfg.Path, p.HandleH3WebSocket)
-	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok\n"))
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.ToUpper(r.Method) == http.MethodConnect {
+			p.HandleH3WebSocket(w, r)
+			return
+		}
+
+		if r.URL.Path == "/" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("ok\n"))
+			return
+		}
+
+		http.NotFound(w, r)
 	})
 
 	server := http3.Server{
@@ -59,7 +75,7 @@ func Run() error {
 		QUICConfig: defaultQUICConfig(),
 	}
 
-	log.Printf("HTTP/3 WS proxy listening on udp %s, path=%s, backend=%s", cfg.ListenAddr, cfg.Path, backendURL.String())
+	log.Printf("HTTP/3 WS proxy listening on udp %s, path=%s, backend=%s", cfg.ListenAddr, cfg.PathPattern, backendURL.String())
 	if err := server.ListenAndServeTLS(cfg.CertFile, cfg.KeyFile); err != nil {
 		return fmt.Errorf("ListenAndServeTLS: %w", err)
 	}
@@ -73,8 +89,8 @@ func parseConfig() config.Config {
 	flag.StringVar(&cfg.CertFile, "cert", "cert.pem", "TLS cert PEM")
 	flag.StringVar(&cfg.KeyFile, "key", "key.pem", "TLS key PEM")
 
-	flag.StringVar(&cfg.BackendWS, "backend", "ws://127.0.0.1:8080/ws", "backend ws:// or wss:// URL (HTTP/1.1 WebSocket)")
-	flag.StringVar(&cfg.Path, "path", "/ws", "path to accept RFC9220 websocket CONNECT")
+	flag.StringVar(&cfg.BackendWS, "backend", "ws://127.0.0.1:8080", "backend ws:// or wss:// URL (HTTP/1.1 WebSocket), without path")
+	flag.StringVar(&cfg.PathPattern, "path", "^/ws$", "regexp pattern for RFC9220 websocket CONNECT path")
 
 	flag.StringVar(&cfg.MetricsAddr, "metrics", "", "TCP addr for Prometheus /metrics (empty disables metrics server)")
 	flag.Int64Var(&cfg.MaxFrame, "max-frame", 1<<20, "max ws frame payload bytes (H3 side)")
@@ -83,6 +99,12 @@ func parseConfig() config.Config {
 	flag.DurationVar(&cfg.ReadTimeout, "read-timeout", 120*time.Second, "read timeout")
 	flag.DurationVar(&cfg.WriteTimeout, "write-timeout", 15*time.Second, "write timeout")
 	flag.Parse()
+
+	pathRegexp, err := regexp.Compile(cfg.PathPattern)
+	if err != nil {
+		log.Fatalf("bad -path regexp: %v", err)
+	}
+	cfg.PathRegexp = pathRegexp
 
 	return cfg
 }

@@ -2,6 +2,7 @@ package config
 
 import (
 	"crypto/tls"
+	"regexp"
 	"time"
 
 	"github.com/quic-go/quic-go/http3"
@@ -12,7 +13,8 @@ type Config struct {
 	CertFile     string
 	KeyFile      string
 	BackendWS    string
-	Path         string
+	PathPattern  string
+	PathRegexp   *regexp.Regexp
 	MetricsAddr  string
 	MaxFrame     int64
 	MaxMessage   int64

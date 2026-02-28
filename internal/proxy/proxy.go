@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,9 +20,19 @@ import (
 )
 
 type Proxy struct {
-	Backend *url.URL
-	Limits  config.Limits
-	active  int64
+	Backend    *url.URL
+	PathRegexp *regexp.Regexp
+	Limits     config.Limits
+	active     int64
+}
+
+func (p *Proxy) backendURLForRequest(r *http.Request) *url.URL {
+	target := *p.Backend
+	target.Path = r.URL.Path
+	target.RawPath = r.URL.RawPath
+	target.RawQuery = r.URL.RawQuery
+	target.Fragment = ""
+	return &target
 }
 
 func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
@@ -36,6 +47,11 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 	if strings.ToUpper(r.Method) != http.MethodConnect {
 		metrics.Rejected.WithLabelValues("method").Inc()
 		http.Error(w, "expected CONNECT", http.StatusMethodNotAllowed)
+		return
+	}
+	if p.PathRegexp != nil && !p.PathRegexp.MatchString(r.URL.Path) {
+		metrics.Rejected.WithLabelValues("path").Inc()
+		http.Error(w, "path not allowed", http.StatusNotFound)
 		return
 	}
 	key := r.Header.Get("Sec-WebSocket-Key")
@@ -67,13 +83,14 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 	if subp != "" {
 		backendHeader.Set("Sec-WebSocket-Protocol", ws.PickFirstToken(subp))
 	}
-	bws, resp, err := dialer.Dial(p.Backend.String(), backendHeader)
+	backendURL := p.backendURLForRequest(r)
+	bws, resp, err := dialer.Dial(backendURL.String(), backendHeader)
 	if err != nil {
 		metrics.Errors.WithLabelValues("backend_dial").Inc()
 		if resp != nil {
-			log.Printf("backend dial failed: %v (status=%s)", err, resp.Status)
+			log.Printf("backend dial failed to %s: %v (status=%s)", backendURL.String(), err, resp.Status)
 		} else {
-			log.Printf("backend dial failed: %v", err)
+			log.Printf("backend dial failed to %s: %v", backendURL.String(), err)
 		}
 		_ = ws.WriteCloseFrame(stream, 1011, "backend dial failed")
 		return
