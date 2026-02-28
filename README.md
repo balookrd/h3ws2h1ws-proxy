@@ -113,3 +113,28 @@ Endpoint: `http://<metrics-addr>/metrics`
 - `h3ws_proxy_messages_total{dir=...,type=...}`
 - `h3ws_proxy_control_frames_total{type=...}`
 - `h3ws_proxy_oversize_drops_total{kind=...}`
+
+## Docker + Grafana
+
+Добавлены файлы для локального observability-стека:
+
+- `Dockerfile` — сборка и запуск прокси в контейнере.
+- `docker-compose.yml` — запуск `h3ws-proxy`, `prometheus`, `grafana`.
+- `deploy/prometheus/prometheus.yml` — scrape-конфиг Prometheus.
+- `deploy/grafana/provisioning/datasources/prometheus.yml` — datasource provisioning.
+- `deploy/grafana/provisioning/dashboards/dashboards.yml` — auto-import dashboard.
+- `deploy/grafana/dashboards/h3ws-proxy-overview.json` — готовый dashboard для метрик прокси.
+
+Запуск:
+
+```bash
+docker compose up --build
+```
+
+После запуска:
+
+- Grafana: `http://localhost:3000` (`admin/admin`)
+- Prometheus: `http://localhost:9091`
+- Proxy metrics: `http://localhost:9090/metrics`
+
+> В compose-конфигурации при первом старте автоматически генерируется self-signed TLS сертификат в `./certs`.

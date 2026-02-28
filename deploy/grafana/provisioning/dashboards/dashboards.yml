@@ -1,0 +1,12 @@
+apiVersion: 1
+
+providers:
+  - name: h3ws2h1ws-proxy
+    orgId: 1
+    folder: H3WS Proxy
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
