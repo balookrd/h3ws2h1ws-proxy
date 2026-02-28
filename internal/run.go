@@ -1,34 +1,42 @@
-package main
+package app
 
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
 	"time"
+
+	"h3ws2h1ws-proxy/internal/config"
+	"h3ws2h1ws-proxy/internal/proxy"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 )
 
-func main() {
+func Run() error {
 	cfg := parseConfig()
 
 	backendURL, err := url.Parse(cfg.BackendWS)
 	if err != nil {
-		log.Fatalf("bad -backend: %v", err)
+		return fmt.Errorf("bad -backend: %w", err)
 	}
 	if backendURL.Scheme != "ws" && backendURL.Scheme != "wss" {
-		log.Fatalf("backend scheme must be ws or wss, got %q", backendURL.Scheme)
+		return fmt.Errorf("backend scheme must be ws or wss, got %q", backendURL.Scheme)
 	}
 
-	startMetricsServer(cfg.MetricsAddr)
+	if cfg.MetricsAddr != "" {
+		startMetricsServer(cfg.MetricsAddr)
+	} else {
+		log.Printf("metrics disabled (use -metrics to enable)")
+	}
 
-	p := &Proxy{
+	p := &proxy.Proxy{
 		Backend: backendURL,
-		Limits: Limits{
+		Limits: config.Limits{
 			MaxFrameSize:   cfg.MaxFrame,
 			MaxMessageSize: cfg.MaxMessage,
 			MaxConns:       cfg.MaxConns,
@@ -38,29 +46,28 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc(cfg.Path, p.handleH3WebSocket)
+	mux.HandleFunc(cfg.Path, p.HandleH3WebSocket)
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
 	})
 
-	tlsConf := defaultTLSConfig()
-	quicConf := defaultQUICConfig()
 	server := http3.Server{
 		Addr:       cfg.ListenAddr,
 		Handler:    mux,
-		TLSConfig:  tlsConf,
-		QUICConfig: quicConf,
+		TLSConfig:  config.DefaultTLSConfig(),
+		QUICConfig: defaultQUICConfig(),
 	}
 
 	log.Printf("HTTP/3 WS proxy listening on udp %s, path=%s, backend=%s", cfg.ListenAddr, cfg.Path, backendURL.String())
 	if err := server.ListenAndServeTLS(cfg.CertFile, cfg.KeyFile); err != nil {
-		log.Fatalf("ListenAndServeTLS: %v", err)
+		return fmt.Errorf("ListenAndServeTLS: %w", err)
 	}
+	return nil
 }
 
-func parseConfig() Config {
-	var cfg Config
+func parseConfig() config.Config {
+	var cfg config.Config
 
 	flag.StringVar(&cfg.ListenAddr, "listen", ":443", "UDP listen addr for HTTP/3 (e.g. :443, :8443)")
 	flag.StringVar(&cfg.CertFile, "cert", "cert.pem", "TLS cert PEM")
@@ -69,7 +76,7 @@ func parseConfig() Config {
 	flag.StringVar(&cfg.BackendWS, "backend", "ws://127.0.0.1:8080/ws", "backend ws:// or wss:// URL (HTTP/1.1 WebSocket)")
 	flag.StringVar(&cfg.Path, "path", "/ws", "path to accept RFC9220 websocket CONNECT")
 
-	flag.StringVar(&cfg.MetricsAddr, "metrics", "127.0.0.1:9090", "TCP addr for Prometheus /metrics")
+	flag.StringVar(&cfg.MetricsAddr, "metrics", "", "TCP addr for Prometheus /metrics (empty disables metrics server)")
 	flag.Int64Var(&cfg.MaxFrame, "max-frame", 1<<20, "max ws frame payload bytes (H3 side)")
 	flag.Int64Var(&cfg.MaxMessage, "max-message", 8<<20, "max reassembled message bytes (H3 side)")
 	flag.Int64Var(&cfg.MaxConns, "max-conns", 2000, "max concurrent sessions")

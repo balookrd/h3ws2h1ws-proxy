@@ -15,20 +15,23 @@
 
 ## Архитектура и назначение модулей
 
-### `main.go`
-Точка входа приложения:
+### `cmd/h3ws2h1ws-proxy/main.go`
+Минимальная точка входа: вызывает `app.Run()` и завершает процесс при ошибке.
+
+### `internal/run.go`
+Bootstrap приложения:
 - парсинг флагов,
 - валидация backend URL,
 - запуск metrics endpoint,
 - создание и запуск HTTP/3 сервера.
 
-### `config.go`
+### `internal/config/config.go`
 Содержит:
 - `Config` — конфигурация процесса (адреса, лимиты, таймауты),
 - `Limits` — runtime-лимиты прокси,
-- `defaultTLSConfig()` — TLS 1.3 + ALPN для HTTP/3.
+- `DefaultTLSConfig()` — TLS 1.3 + ALPN для HTTP/3.
 
-### `metrics.go`
+### `internal/metrics/metrics.go`
 Определяет и регистрирует Prometheus-метрики:
 - активные сессии,
 - принятые/отклонённые подключения,
@@ -37,7 +40,7 @@
 - control frames,
 - дропы из-за лимитов.
 
-### `proxy.go`
+### `internal/proxy/proxy.go`
 Содержит основную логику установки сессии:
 - проверка RFC9220-заголовков,
 - ответ handshake (`Sec-WebSocket-Accept`),
@@ -45,7 +48,7 @@
 - запуск двунаправленных pump-потоков,
 - жизненный цикл сессии и обработка ошибок.
 
-### `pumps.go`
+### `internal/proxy/pumps.go`
 Логика передачи данных:
 - `pumpH3ToBackend` — из H3-потока в backend WebSocket,
 - `pumpBackendToH3` — из backend WebSocket в H3-поток.
@@ -56,19 +59,19 @@
 - реакцию на `ping/pong/close`,
 - проверки лимитов размеров.
 
-### `ws_framing.go`
+### `internal/ws/framing.go`
 Низкоуровневая реализация RFC6455:
-- чтение frame (`readWSFrame`),
+- чтение frame (`ReadFrame`),
 - запись data/control/close frame,
 - фрагментация больших payload,
 - маскирование/демаскирование,
 - парсинг payload close frame.
 
-### `utils.go`
+### `internal/ws/utils.go`
 Вспомогательные функции:
-- `computeAccept` — расчёт `Sec-WebSocket-Accept`,
-- `pickFirstToken` — выбор первого subprotocol,
-- `isNetClose` — эвристика «нормального» закрытия соединения.
+- `ComputeAccept` — расчёт `Sec-WebSocket-Accept`,
+- `PickFirstToken` — выбор первого subprotocol,
+- `IsNetClose` — эвристика «нормального» закрытия соединения.
 
 ## Запуск
 
@@ -79,7 +82,7 @@
 ### Пример
 
 ```bash
-go run . \
+go run ./cmd/h3ws2h1ws-proxy \
   -listen :443 \
   -cert cert.pem \
   -key key.pem \
@@ -94,7 +97,7 @@ go run . \
 - `-cert` / `-key` — TLS сертификат и ключ
 - `-backend` — URL backend WebSocket (`ws://` или `wss://`)
 - `-path` — путь для RFC9220 CONNECT (по умолчанию `/ws`)
-- `-metrics` — адрес endpoint метрик (по умолчанию `127.0.0.1:9090`)
+- `-metrics` — адрес endpoint метрик (по умолчанию выключен; пустое значение отключает сервер метрик)
 - `-max-frame` — максимум байт в одном frame
 - `-max-message` — максимум байт в одном собранном сообщении
 - `-max-conns` — максимум одновременных сессий
@@ -102,7 +105,7 @@ go run . \
 
 ## Метрики
 
-Endpoint: `http://<metrics-addr>/metrics`
+Endpoint: `http://<metrics-addr>/metrics` (доступен только если задан `-metrics`)
 
 Ключевые метрики:
 - `h3ws_proxy_active_sessions`

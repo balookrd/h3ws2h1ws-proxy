@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"crypto/tls"
@@ -29,7 +29,7 @@ type Limits struct {
 	WriteTimeout   time.Duration
 }
 
-func defaultTLSConfig() *tls.Config {
+func DefaultTLSConfig() *tls.Config {
 	return &tls.Config{
 		MinVersion: tls.VersionTLS13,
 		NextProtos: []string{http3.NextProtoH3},
