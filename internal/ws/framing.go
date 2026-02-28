@@ -1,4 +1,4 @@
-package main
+package ws
 
 import (
 	"bufio"
@@ -7,26 +7,28 @@ import (
 	"errors"
 	"fmt"
 	"io"
+
+	"h3ws2h1ws-proxy/internal/metrics"
 )
 
 const (
-	opCont   = 0x0
-	opText   = 0x1
-	opBinary = 0x2
-	opClose  = 0x8
-	opPing   = 0x9
-	opPong   = 0xA
+	OpCont   = 0x0
+	OpText   = 0x1
+	OpBinary = 0x2
+	OpClose  = 0x8
+	OpPing   = 0x9
+	OpPong   = 0xA
 )
 
-type wsFrame struct {
-	fin     bool
-	opcode  byte
-	masked  bool
-	payload []byte
+type Frame struct {
+	Fin     bool
+	Opcode  byte
+	Masked  bool
+	Payload []byte
 }
 
-func readWSFrame(r *bufio.Reader, maxFramePayload int64) (wsFrame, error) {
-	var f wsFrame
+func ReadFrame(r *bufio.Reader, maxFramePayload int64) (Frame, error) {
+	var f Frame
 
 	b0, err := r.ReadByte()
 	if err != nil {
@@ -37,9 +39,9 @@ func readWSFrame(r *bufio.Reader, maxFramePayload int64) (wsFrame, error) {
 		return f, err
 	}
 
-	f.fin = (b0 & 0x80) != 0
-	f.opcode = b0 & 0x0F
-	f.masked = (b1 & 0x80) != 0
+	f.Fin = (b0 & 0x80) != 0
+	f.Opcode = b0 & 0x0F
+	f.Masked = (b1 & 0x80) != 0
 
 	plen := int64(b1 & 0x7F)
 	switch plen {
@@ -61,31 +63,31 @@ func readWSFrame(r *bufio.Reader, maxFramePayload int64) (wsFrame, error) {
 	}
 
 	if maxFramePayload > 0 && plen > maxFramePayload {
-		mOversizeDrops.WithLabelValues("frame").Inc()
+		metrics.OversizeDrops.WithLabelValues("frame").Inc()
 		return f, fmt.Errorf("frame too large: %d", plen)
 	}
 
 	var maskKey [4]byte
-	if f.masked {
+	if f.Masked {
 		if _, err := io.ReadFull(r, maskKey[:]); err != nil {
 			return f, err
 		}
 	}
 
-	f.payload = make([]byte, plen)
-	if _, err := io.ReadFull(r, f.payload); err != nil {
+	f.Payload = make([]byte, plen)
+	if _, err := io.ReadFull(r, f.Payload); err != nil {
 		return f, err
 	}
 
-	if f.masked {
-		for i := range f.payload {
-			f.payload[i] ^= maskKey[i%4]
+	if f.Masked {
+		for i := range f.Payload {
+			f.Payload[i] ^= maskKey[i%4]
 		}
 	}
 	return f, nil
 }
 
-func writeDataFrame(w io.Writer, opcode byte, payload []byte, masked bool, maxFramePayload int64) error {
+func WriteDataFrame(w io.Writer, opcode byte, payload []byte, masked bool, maxFramePayload int64) error {
 	if maxFramePayload <= 0 || int64(len(payload)) <= maxFramePayload {
 		return writeFrame(w, opcode, payload, masked, true)
 	}
@@ -98,7 +100,7 @@ func writeDataFrame(w io.Writer, opcode byte, payload []byte, masked bool, maxFr
 
 		op := opcode
 		if !first {
-			op = opCont
+			op = OpCont
 		}
 		first = false
 		if err := writeFrame(w, op, chunk, masked, false); err != nil {
@@ -107,26 +109,26 @@ func writeDataFrame(w io.Writer, opcode byte, payload []byte, masked bool, maxFr
 	}
 	op := opcode
 	if !first {
-		op = opCont
+		op = OpCont
 	}
 	return writeFrame(w, op, remaining, masked, true)
 }
 
-func writeControlFrame(w io.Writer, opcode byte, payload []byte) error {
+func WriteControlFrame(w io.Writer, opcode byte, payload []byte) error {
 	if len(payload) > 125 {
 		payload = payload[:125]
 	}
 	return writeFrame(w, opcode, payload, false, true)
 }
 
-func writeCloseFrame(w io.Writer, code uint16, reason string) error {
+func WriteCloseFrame(w io.Writer, code uint16, reason string) error {
 	pl := make([]byte, 2+len(reason))
 	binary.BigEndian.PutUint16(pl[:2], code)
 	copy(pl[2:], []byte(reason))
 	if len(pl) > 125 {
 		pl = pl[:125]
 	}
-	return writeFrame(w, opClose, pl, false, true)
+	return writeFrame(w, OpClose, pl, false, true)
 }
 
 func writeFrame(w io.Writer, opcode byte, payload []byte, masked bool, fin bool) error {
@@ -183,7 +185,7 @@ func writeFrame(w io.Writer, opcode byte, payload []byte, masked bool, fin bool)
 	return err
 }
 
-func parseClosePayload(p []byte) (int, string) {
+func ParseClosePayload(p []byte) (int, string) {
 	if len(p) < 2 {
 		return 1000, ""
 	}

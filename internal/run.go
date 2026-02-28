@@ -1,34 +1,38 @@
-package main
+package app
 
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
 	"time"
+
+	"h3ws2h1ws-proxy/internal/config"
+	"h3ws2h1ws-proxy/internal/proxy"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 )
 
-func main() {
+func Run() error {
 	cfg := parseConfig()
 
 	backendURL, err := url.Parse(cfg.BackendWS)
 	if err != nil {
-		log.Fatalf("bad -backend: %v", err)
+		return fmt.Errorf("bad -backend: %w", err)
 	}
 	if backendURL.Scheme != "ws" && backendURL.Scheme != "wss" {
-		log.Fatalf("backend scheme must be ws or wss, got %q", backendURL.Scheme)
+		return fmt.Errorf("backend scheme must be ws or wss, got %q", backendURL.Scheme)
 	}
 
 	startMetricsServer(cfg.MetricsAddr)
 
-	p := &Proxy{
+	p := &proxy.Proxy{
 		Backend: backendURL,
-		Limits: Limits{
+		Limits: config.Limits{
 			MaxFrameSize:   cfg.MaxFrame,
 			MaxMessageSize: cfg.MaxMessage,
 			MaxConns:       cfg.MaxConns,
@@ -38,29 +42,28 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc(cfg.Path, p.handleH3WebSocket)
+	mux.HandleFunc(cfg.Path, p.HandleH3WebSocket)
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
 	})
 
-	tlsConf := defaultTLSConfig()
-	quicConf := defaultQUICConfig()
 	server := http3.Server{
 		Addr:       cfg.ListenAddr,
 		Handler:    mux,
-		TLSConfig:  tlsConf,
-		QUICConfig: quicConf,
+		TLSConfig:  config.DefaultTLSConfig(),
+		QUICConfig: defaultQUICConfig(),
 	}
 
 	log.Printf("HTTP/3 WS proxy listening on udp %s, path=%s, backend=%s", cfg.ListenAddr, cfg.Path, backendURL.String())
 	if err := server.ListenAndServeTLS(cfg.CertFile, cfg.KeyFile); err != nil {
-		log.Fatalf("ListenAndServeTLS: %v", err)
+		return fmt.Errorf("ListenAndServeTLS: %w", err)
 	}
+	return nil
 }
 
-func parseConfig() Config {
-	var cfg Config
+func parseConfig() config.Config {
+	var cfg config.Config
 
 	flag.StringVar(&cfg.ListenAddr, "listen", ":443", "UDP listen addr for HTTP/3 (e.g. :443, :8443)")
 	flag.StringVar(&cfg.CertFile, "cert", "cert.pem", "TLS cert PEM")

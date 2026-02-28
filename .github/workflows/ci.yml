@@ -33,6 +33,12 @@ jobs:
         run: |
           test -z "$(gofmt -l .)"
 
+      - name: Lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m
+
       - name: Test
         run: go test ./...
 
