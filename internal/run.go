@@ -28,7 +28,11 @@ func Run() error {
 		return fmt.Errorf("backend scheme must be ws or wss, got %q", backendURL.Scheme)
 	}
 
-	startMetricsServer(cfg.MetricsAddr)
+	if cfg.MetricsAddr != "" {
+		startMetricsServer(cfg.MetricsAddr)
+	} else {
+		log.Printf("metrics disabled (use -metrics to enable)")
+	}
 
 	p := &proxy.Proxy{
 		Backend: backendURL,
@@ -72,7 +76,7 @@ func parseConfig() config.Config {
 	flag.StringVar(&cfg.BackendWS, "backend", "ws://127.0.0.1:8080/ws", "backend ws:// or wss:// URL (HTTP/1.1 WebSocket)")
 	flag.StringVar(&cfg.Path, "path", "/ws", "path to accept RFC9220 websocket CONNECT")
 
-	flag.StringVar(&cfg.MetricsAddr, "metrics", "127.0.0.1:9090", "TCP addr for Prometheus /metrics")
+	flag.StringVar(&cfg.MetricsAddr, "metrics", "", "TCP addr for Prometheus /metrics (empty disables metrics server)")
 	flag.Int64Var(&cfg.MaxFrame, "max-frame", 1<<20, "max ws frame payload bytes (H3 side)")
 	flag.Int64Var(&cfg.MaxMessage, "max-message", 8<<20, "max reassembled message bytes (H3 side)")
 	flag.Int64Var(&cfg.MaxConns, "max-conns", 2000, "max concurrent sessions")

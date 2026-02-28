@@ -97,7 +97,7 @@ go run ./cmd/h3ws2h1ws-proxy \
 - `-cert` / `-key` — TLS сертификат и ключ
 - `-backend` — URL backend WebSocket (`ws://` или `wss://`)
 - `-path` — путь для RFC9220 CONNECT (по умолчанию `/ws`)
-- `-metrics` — адрес endpoint метрик (по умолчанию `127.0.0.1:9090`)
+- `-metrics` — адрес endpoint метрик (по умолчанию выключен; пустое значение отключает сервер метрик)
 - `-max-frame` — максимум байт в одном frame
 - `-max-message` — максимум байт в одном собранном сообщении
 - `-max-conns` — максимум одновременных сессий
@@ -105,7 +105,7 @@ go run ./cmd/h3ws2h1ws-proxy \
 
 ## Метрики
 
-Endpoint: `http://<metrics-addr>/metrics`
+Endpoint: `http://<metrics-addr>/metrics` (доступен только если задан `-metrics`)
 
 Ключевые метрики:
 - `h3ws_proxy_active_sessions`
