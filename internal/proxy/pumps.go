@@ -67,6 +67,10 @@ func pumpH3ToBackend(ctx context.Context, s io.ReadWriter, bws *websocket.Conn, 
 
 		f, err := ws.ReadFrame(br, lim.MaxFrameSize)
 		if err != nil {
+			if errors.Is(err, io.EOF) || ws.IsNetClose(err) {
+				debugf(debug, "h3->h1 input half-closed: %v", err)
+				return nil
+			}
 			debugf(debug, "h3->h1 read frame error: %v", err)
 			return err
 		}
