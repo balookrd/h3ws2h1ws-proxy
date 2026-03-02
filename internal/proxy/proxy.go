@@ -72,6 +72,11 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	rc := http.NewResponseController(w)
+	if err := rc.EnableFullDuplex(); err != nil {
+		p.debugf("enable full duplex failed: %v", err)
+	}
+
 	hs, ok := w.(http3.HTTPStreamer)
 	if !ok {
 		metrics.Errors.WithLabelValues("no_stream_takeover").Inc()
