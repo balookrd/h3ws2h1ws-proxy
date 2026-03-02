@@ -64,7 +64,21 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "path not allowed", http.StatusNotFound)
 		return
 	}
-	if r.Proto != "websocket" {
+
+	// RFC 9220 uses Extended CONNECT with the pseudo-header ":protocol = websocket".
+	// In Go's net/http API, pseudo-headers are not represented consistently across
+	// implementations. In particular, r.Proto is the HTTP version (e.g. "HTTP/3.0"),
+	// not the value of ":protocol".
+	//
+	// quic-go may surface ":protocol" either as a regular header ("Protocol") or not
+	// at all. We therefore treat it as an *optional* validation signal:
+	//   - if a protocol header is present and is not "websocket" => reject
+	//   - if it is absent => accept based on other WebSocket headers
+	if proto := firstNonEmpty(
+		r.Header.Get(":protocol"),
+		r.Header.Get("protocol"),
+		r.Header.Get("Protocol"),
+	); proto != "" && proto != "websocket" {
 		metrics.Rejected.WithLabelValues("bad_headers").Inc()
 		http.Error(w, "missing/invalid :protocol websocket", http.StatusBadRequest)
 		return
@@ -188,4 +202,13 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 		metrics.Errors.WithLabelValues("session").Inc()
 		log.Printf("session ended: %v", err1)
 	}
+}
+
+func firstNonEmpty(v ...string) string {
+	for _, s := range v {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
 }
