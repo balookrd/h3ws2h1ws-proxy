@@ -91,6 +91,27 @@ go run ./cmd/h3ws2h1ws-proxy \
   -metrics 127.0.0.1:9090
 ```
 
+### Пример запуска в Docker
+
+```bash
+docker build -t h3ws2h1ws-proxy:local .
+
+docker run --rm \
+  -p 443:443/udp \
+  -p 9090:9090 \
+  -v "$(pwd)/cert.pem:/app/cert.pem:ro" \
+  -v "$(pwd)/key.pem:/app/key.pem:ro" \
+  h3ws2h1ws-proxy:local \
+  -listen :443 \
+  -cert /app/cert.pem \
+  -key /app/key.pem \
+  -backend ws://host.docker.internal:8080 \
+  -path "^/ws/(tcp|udp)$" \
+  -metrics :9090
+```
+
+> Для Linux при необходимости добавьте `--add-host=host.docker.internal:host-gateway`, чтобы контейнер мог достучаться до backend на хосте.
+
 ## Основные флаги
 
 - `-listen` — UDP адрес HTTP/3 сервера (по умолчанию `:443`)
