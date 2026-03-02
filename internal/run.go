@@ -96,7 +96,7 @@ func Run() error {
 		Handler:         mux,
 		TLSConfig:       tlsCfg,
 		QUICConfig:      quicCfg,
-		EnableDatagrams: true,
+		EnableDatagrams: false,
 	}
 
 	if cfg.Debug {
@@ -166,7 +166,7 @@ func startMetricsServer(addr string) {
 
 func defaultQUICConfig(debug bool, connHadRequest, connRemoteAddr *sync.Map) *quic.Config {
 	quicCfg := &quic.Config{
-		EnableDatagrams:                true,
+		EnableDatagrams:                false,
 		MaxIdleTimeout:                 60 * time.Second,
 		KeepAlivePeriod:                20 * time.Second,
 		MaxIncomingStreams:             10000,
