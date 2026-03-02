@@ -238,7 +238,7 @@ func defaultQUICConfig(debug bool, connHadRequest, connRemoteAddr *sync.Map) *qu
 				},
 				DroppedPacket: func(pt logging.PacketType, pn logging.PacketNumber, size logging.ByteCount, reason logging.PacketDropReason) {
 					atomic.AddInt64(&droppedPackets, 1)
-					log.Printf("[debug] quic packet dropped: conn_id=%s packet_type=%v pn=%d bytes=%d reason=%v", connID, pt, pn, size, reason)
+					log.Printf("[debug] quic packet dropped: conn_id=%s packet_type=%s pn=%d bytes=%d reason=%s", connID, packetTypeName(pt), pn, size, packetDropReasonName(reason))
 				},
 				ChoseALPN: func(protocol string) {
 					log.Printf("[debug] quic conn alpn negotiated: conn_id=%s alpn=%q", connID, protocol)
@@ -284,11 +284,74 @@ func summarizeQUICFrames(frames []logging.Frame) string {
 	if len(frames) == 0 {
 		return "none"
 	}
-	names := make([]string, 0, len(frames))
+	parts := make([]string, 0, len(frames))
 	for _, f := range frames {
-		names = append(names, fmt.Sprintf("%T", f))
+		switch ff := f.(type) {
+		case *logging.StreamFrame:
+			parts = append(parts, fmt.Sprintf("stream(id=%d off=%d len=%d fin=%v)", ff.StreamID, ff.Offset, ff.Length, ff.Fin))
+		case *logging.CryptoFrame:
+			parts = append(parts, fmt.Sprintf("crypto(off=%d len=%d)", ff.Offset, ff.Length))
+		case *logging.ConnectionCloseFrame:
+			parts = append(parts, fmt.Sprintf("conn_close(code=%d reason=%q app=%v)", ff.ErrorCode, ff.ReasonPhrase, ff.IsApplicationError))
+		case *logging.AckFrame:
+			parts = append(parts, fmt.Sprintf("ack(ranges=%d delay=%s)", len(ff.AckRanges), ff.DelayTime))
+		default:
+			parts = append(parts, fmt.Sprintf("%T", f))
+		}
 	}
-	return strings.Join(names, ",")
+	return strings.Join(parts, ",")
+}
+
+func packetTypeName(pt logging.PacketType) string {
+	switch pt {
+	case logging.PacketTypeInitial:
+		return "initial"
+	case logging.PacketTypeHandshake:
+		return "handshake"
+	case logging.PacketTypeRetry:
+		return "retry"
+	case logging.PacketType0RTT:
+		return "0rtt"
+	case logging.PacketTypeVersionNegotiation:
+		return "version_negotiation"
+	case logging.PacketType1RTT:
+		return "1rtt"
+	case logging.PacketTypeStatelessReset:
+		return "stateless_reset"
+	case logging.PacketTypeNotDetermined:
+		return "not_determined"
+	default:
+		return fmt.Sprintf("unknown(%d)", pt)
+	}
+}
+
+func packetDropReasonName(reason logging.PacketDropReason) string {
+	switch reason {
+	case logging.PacketDropKeyUnavailable:
+		return "key_unavailable"
+	case logging.PacketDropUnknownConnectionID:
+		return "unknown_connection_id"
+	case logging.PacketDropHeaderParseError:
+		return "header_parse_error"
+	case logging.PacketDropPayloadDecryptError:
+		return "payload_decrypt_error"
+	case logging.PacketDropProtocolViolation:
+		return "protocol_violation"
+	case logging.PacketDropDOSPrevention:
+		return "dos_prevention"
+	case logging.PacketDropUnsupportedVersion:
+		return "unsupported_version"
+	case logging.PacketDropUnexpectedPacket:
+		return "unexpected_packet"
+	case logging.PacketDropUnexpectedSourceConnectionID:
+		return "unexpected_source_connection_id"
+	case logging.PacketDropUnexpectedVersion:
+		return "unexpected_version"
+	case logging.PacketDropDuplicate:
+		return "duplicate"
+	default:
+		return fmt.Sprintf("unknown(%d)", reason)
+	}
 }
 func loadServerTLSConfig(certFile, keyFile string) (*tls.Config, error) {
 	tlsCfg := config.DefaultTLSConfig()
