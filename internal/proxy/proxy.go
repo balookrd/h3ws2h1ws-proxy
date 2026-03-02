@@ -78,9 +78,6 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "http3 stream takeover not supported", http.StatusInternalServerError)
 		return
 	}
-	stream := hs.HTTPStream()
-	defer func() { _ = stream.Close() }()
-	p.debugf("http3 stream takeover success: path=%s", r.URL.Path)
 
 	w.Header().Set("Sec-WebSocket-Accept", ws.ComputeAccept(key))
 	subp := r.Header.Get("Sec-WebSocket-Protocol")
@@ -91,6 +88,10 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
 	}
+
+	stream := hs.HTTPStream()
+	defer func() { _ = stream.Close() }()
+	p.debugf("http3 stream takeover success: path=%s", r.URL.Path)
 
 	dialer := websocket.Dialer{
 		Proxy:             http.ProxyFromEnvironment,
