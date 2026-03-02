@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -126,22 +127,37 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	bws.SetReadLimit(p.Limits.MaxMessageSize)
 
+	type pumpResult struct {
+		dir string
+		err error
+	}
+
 	var wg sync.WaitGroup
-	errCh := make(chan error, 2)
+	errCh := make(chan pumpResult, 2)
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		errCh <- pumpH3ToBackend(ctx, stream, bws, p.Limits, st, p.Debug)
+		errCh <- pumpResult{dir: "h3_to_h1", err: pumpH3ToBackend(ctx, stream, bws, p.Limits, st, p.Debug)}
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		errCh <- pumpBackendToH3(ctx, bws, stream, p.Limits, st, p.Debug)
+		errCh <- pumpResult{dir: "h1_to_h3", err: pumpBackendToH3(ctx, bws, stream, p.Limits, st, p.Debug)}
 	}()
 
-	err1 := <-errCh
+	first := <-errCh
+	err1 := first.err
+	if first.dir == "h3_to_h1" && (first.err == nil || errors.Is(first.err, io.EOF) || ws.IsNetClose(first.err)) {
+		second := <-errCh
+		err1 = second.err
+	} else {
+		cancel()
+		_ = stream.Close()
+		_ = bws.Close()
+		<-errCh
+	}
 	cancel()
 	_ = stream.Close()
 	_ = bws.Close()
