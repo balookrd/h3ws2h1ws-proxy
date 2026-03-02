@@ -170,6 +170,9 @@ func defaultQUICConfig(debug bool) *quic.Config {
 					}
 					log.Printf("[debug] quic conn closed cleanly: conn_id=%s", connID)
 				},
+				Debug: func(name, msg string) {
+					log.Printf("[debug] quic conn event: conn_id=%s name=%s msg=%s", connID, name, msg)
+				},
 			}
 		}
 	}
