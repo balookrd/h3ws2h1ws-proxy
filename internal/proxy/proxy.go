@@ -65,20 +65,23 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// RFC 9220 (via RFC 8441) requires Extended CONNECT with
-	// ":protocol = websocket".
+	// Compatibility note:
+	// Some clients / gateways still omit RFC8441 `:protocol` and
+	// Sec-WebSocket-Version over H3 Extended CONNECT.
+	// We reject only explicitly invalid values, but tolerate absence.
 	if proto := firstNonEmpty(
 		r.Header.Get(":protocol"),
 		r.Header.Get("protocol"),
 		r.Header.Get("Protocol"),
-	); proto != "websocket" {
+	); proto != "" && proto != "websocket" {
 		metrics.Rejected.WithLabelValues("bad_headers").Inc()
 		http.Error(w, "missing/invalid :protocol websocket", http.StatusBadRequest)
 		return
 	}
 
+	key := r.Header.Get("Sec-WebSocket-Key")
 	ver := r.Header.Get("Sec-WebSocket-Version")
-	if ver != "13" {
+	if ver != "" && ver != "13" {
 		metrics.Rejected.WithLabelValues("bad_headers").Inc()
 		http.Error(w, "missing/invalid websocket headers", http.StatusBadRequest)
 		return
@@ -94,6 +97,10 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 		metrics.Errors.WithLabelValues("no_stream_takeover").Inc()
 		http.Error(w, "http3 stream takeover not supported", http.StatusInternalServerError)
 		return
+	}
+
+	if key != "" {
+		w.Header().Set("Sec-WebSocket-Accept", ws.ComputeAccept(key))
 	}
 
 	subp := r.Header.Get("Sec-WebSocket-Protocol")
