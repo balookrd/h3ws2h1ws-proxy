@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"net"
 	"sync/atomic"
 	"time"
 
@@ -181,11 +182,22 @@ func pumpBackendToH3(ctx context.Context, bws *websocket.Conn, s io.Writer, lim 
 		default:
 		}
 
-		if err := bws.SetReadDeadline(time.Now().Add(lim.ReadTimeout)); err != nil {
-			return err
+		if lim.ReadTimeout > 0 {
+			if err := bws.SetReadDeadline(time.Now().Add(lim.ReadTimeout)); err != nil {
+				return err
+			}
+		} else {
+			if err := bws.SetReadDeadline(time.Time{}); err != nil {
+				return err
+			}
 		}
 		mt, data, err := bws.ReadMessage()
 		if err != nil {
+			var ne net.Error
+			if errors.As(err, &ne) && ne.Timeout() {
+				debugf(debug, "h1->h3 backend read timeout: %v (continuing)", err)
+				continue
+			}
 			debugf(debug, "h1->h3 backend read error: %v", err)
 			if ce, ok := err.(*websocket.CloseError); ok {
 				_ = ws.WriteCloseFrame(s, uint16(ce.Code), ce.Text)
