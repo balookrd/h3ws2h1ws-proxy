@@ -61,13 +61,12 @@ func Run() error {
 	}
 
 	var connHadRequest sync.Map
+	var connRemoteAddr sync.Map
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if cfg.Debug {
-			if connID, ok := r.Context().Value(quic.ConnectionTracingKey).(quic.ConnectionTracingID); ok {
-				connHadRequest.Store(connID, true)
-			}
+			connHadRequest.Store(r.RemoteAddr, true)
 			log.Printf("[debug] incoming http request: method=%s proto=%s host=%s path=%s remote=%s", r.Method, r.Proto, r.Host, r.URL.String(), r.RemoteAddr)
 		}
 
@@ -85,7 +84,7 @@ func Run() error {
 		http.NotFound(w, r)
 	})
 
-	quicCfg := defaultQUICConfig(cfg.Debug, &connHadRequest)
+	quicCfg := defaultQUICConfig(cfg.Debug, &connHadRequest, &connRemoteAddr)
 	tlsCfg, err := loadServerTLSConfig(cfg.CertFile, cfg.KeyFile)
 	if err != nil {
 		return fmt.Errorf("load TLS config: %w", err)
@@ -177,7 +176,7 @@ func startMetricsServer(addr string) {
 	}()
 }
 
-func defaultQUICConfig(debug bool, connHadRequest *sync.Map) *quic.Config {
+func defaultQUICConfig(debug bool, connHadRequest, connRemoteAddr *sync.Map) *quic.Config {
 	quicCfg := &quic.Config{
 		EnableDatagrams:                false,
 		MaxIdleTimeout:                 60 * time.Second,
@@ -196,6 +195,9 @@ func defaultQUICConfig(debug bool, connHadRequest *sync.Map) *quic.Config {
 			log.Printf("[debug] quic connection tracer attached: conn_id=%s", connID)
 			return &logging.ConnectionTracer{
 				StartedConnection: func(local, remote net.Addr, srcConnID, destConnID logging.ConnectionID) {
+					if connRemoteAddr != nil {
+						connRemoteAddr.Store(connID, remote.String())
+					}
 					log.Printf("[debug] quic conn started: local=%s remote=%s src_conn_id=%s dest_conn_id=%s", local, remote, srcConnID, destConnID)
 				},
 				ChoseALPN: func(protocol string) {
@@ -203,10 +205,15 @@ func defaultQUICConfig(debug bool, connHadRequest *sync.Map) *quic.Config {
 				},
 				ClosedConnection: func(err error) {
 					hadReq := false
-					if connHadRequest != nil {
-						if v, ok := connHadRequest.Load(connID); ok {
-							hadReq, _ = v.(bool)
-							connHadRequest.Delete(connID)
+					if connHadRequest != nil && connRemoteAddr != nil {
+						if remote, ok := connRemoteAddr.Load(connID); ok {
+							connRemoteAddr.Delete(connID)
+							if remoteAddr, ok := remote.(string); ok {
+								if v, ok := connHadRequest.Load(remoteAddr); ok {
+									hadReq, _ = v.(bool)
+									connHadRequest.Delete(remoteAddr)
+								}
+							}
 						}
 					}
 					if err != nil {
