@@ -6,9 +6,11 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -85,6 +87,7 @@ func Run() error {
 	}
 
 	if cfg.Debug {
+		server.Logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 		server.ConnContext = func(ctx context.Context, c quic.Connection) context.Context {
 			log.Printf("[debug] http3 conn context: conn_id=%v local=%s remote=%s", c.Context().Value(quic.ConnectionTracingKey), c.LocalAddr(), c.RemoteAddr())
 			return ctx
