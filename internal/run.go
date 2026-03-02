@@ -43,6 +43,7 @@ func Run() error {
 	p := &proxy.Proxy{
 		Backend:    backendURL,
 		PathRegexp: cfg.PathRegexp,
+		Debug:      cfg.Debug,
 		Limits: config.Limits{
 			MaxFrameSize:   cfg.MaxFrame,
 			MaxMessageSize: cfg.MaxMessage,
@@ -68,14 +69,19 @@ func Run() error {
 		http.NotFound(w, r)
 	})
 
+	quicCfg := defaultQUICConfig()
 	server := http3.Server{
 		Addr:       cfg.ListenAddr,
 		Handler:    mux,
 		TLSConfig:  config.DefaultTLSConfig(),
-		QUICConfig: defaultQUICConfig(),
+		QUICConfig: quicCfg,
 	}
 
-	log.Printf("HTTP/3 WS proxy listening on udp %s, path=%s, backend=%s", cfg.ListenAddr, cfg.PathPattern, backendURL.String())
+	if cfg.Debug {
+		log.Printf("[debug] quic config: max_idle=%s keepalive=%s incoming_streams=%d incoming_uni_streams=%d stream_recv_window=%d conn_recv_window=%d", quicCfg.MaxIdleTimeout, quicCfg.KeepAlivePeriod, quicCfg.MaxIncomingStreams, quicCfg.MaxIncomingUniStreams, quicCfg.MaxStreamReceiveWindow, quicCfg.MaxConnectionReceiveWindow)
+	}
+
+	log.Printf("HTTP/3 WS proxy listening on udp %s, path=%s, backend=%s, debug=%v", cfg.ListenAddr, cfg.PathPattern, backendURL.String(), cfg.Debug)
 	if err := server.ListenAndServeTLS(cfg.CertFile, cfg.KeyFile); err != nil {
 		return fmt.Errorf("ListenAndServeTLS: %w", err)
 	}
@@ -98,6 +104,7 @@ func parseConfig() config.Config {
 	flag.Int64Var(&cfg.MaxConns, "max-conns", 2000, "max concurrent sessions")
 	flag.DurationVar(&cfg.ReadTimeout, "read-timeout", 120*time.Second, "read timeout")
 	flag.DurationVar(&cfg.WriteTimeout, "write-timeout", 15*time.Second, "write timeout")
+	flag.BoolVar(&cfg.Debug, "debug", false, "enable verbose debug logs for QUIC/HTTP3 and proxy flow")
 	flag.Parse()
 
 	pathRegexp, err := regexp.Compile(cfg.PathPattern)

@@ -22,8 +22,15 @@ import (
 type Proxy struct {
 	Backend    *url.URL
 	PathRegexp *regexp.Regexp
+	Debug      bool
 	Limits     config.Limits
 	active     int64
+}
+
+func (p *Proxy) debugf(format string, args ...any) {
+	if p.Debug {
+		log.Printf("[debug] "+format, args...)
+	}
 }
 
 func (p *Proxy) backendURLForRequest(r *http.Request) *url.URL {
@@ -36,6 +43,8 @@ func (p *Proxy) backendURLForRequest(r *http.Request) *url.URL {
 }
 
 func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
+	p.debugf("incoming request: method=%s proto=%s path=%s remote=%s", r.Method, r.Proto, r.URL.String(), r.RemoteAddr)
+
 	if atomic.AddInt64(&p.active, 1) > p.Limits.MaxConns {
 		atomic.AddInt64(&p.active, -1)
 		metrics.Rejected.WithLabelValues("max_conns").Inc()
@@ -70,6 +79,7 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	stream := hs.HTTPStream()
 	defer func() { _ = stream.Close() }()
+	p.debugf("http3 stream takeover success: path=%s", r.URL.Path)
 
 	w.Header().Set("Sec-WebSocket-Accept", ws.ComputeAccept(key))
 	subp := r.Header.Get("Sec-WebSocket-Protocol")
@@ -90,6 +100,7 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 		backendHeader.Set("Sec-WebSocket-Protocol", ws.PickFirstToken(subp))
 	}
 	backendURL := p.backendURLForRequest(r)
+	p.debugf("dial backend websocket: %s", backendURL.String())
 	bws, resp, err := dialer.Dial(backendURL.String(), backendHeader)
 	if err != nil {
 		metrics.Errors.WithLabelValues("backend_dial").Inc()
@@ -102,6 +113,7 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = bws.Close() }()
+	p.debugf("backend websocket connected: %s", backendURL.String())
 
 	metrics.Accepted.Inc()
 	metrics.ActiveSessions.Inc()
@@ -120,13 +132,13 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		errCh <- pumpH3ToBackend(ctx, stream, bws, p.Limits, st)
+		errCh <- pumpH3ToBackend(ctx, stream, bws, p.Limits, st, p.Debug)
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		errCh <- pumpBackendToH3(ctx, bws, stream, p.Limits, st)
+		errCh <- pumpBackendToH3(ctx, bws, stream, p.Limits, st, p.Debug)
 	}()
 
 	err1 := <-errCh
@@ -138,6 +150,7 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 	metrics.SessionDuration.Observe(time.Since(sessionStarted).Seconds())
 	metrics.SessionTrafficBytes.WithLabelValues("h3_to_h1").Observe(float64(atomic.LoadUint64(&st.h3ToH1Bytes)))
 	metrics.SessionTrafficBytes.WithLabelValues("h1_to_h3").Observe(float64(atomic.LoadUint64(&st.h1ToH3Bytes)))
+	p.debugf("session finished: path=%s dur=%s h3_to_h1_bytes=%d h1_to_h3_bytes=%d err=%v", r.URL.Path, time.Since(sessionStarted), atomic.LoadUint64(&st.h3ToH1Bytes), atomic.LoadUint64(&st.h1ToH3Bytes), err1)
 
 	if err1 != nil && !errors.Is(err1, context.Canceled) && !ws.IsNetClose(err1) {
 		metrics.Errors.WithLabelValues("session").Inc()

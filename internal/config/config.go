@@ -21,6 +21,7 @@ type Config struct {
 	MaxConns     int64
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
+	Debug        bool
 }
 
 type Limits struct {
