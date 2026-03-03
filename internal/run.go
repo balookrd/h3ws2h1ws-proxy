@@ -72,6 +72,7 @@ func Run() error {
 		}
 
 		if strings.ToUpper(r.Method) == http.MethodConnect {
+			connHadRequest.Store(r.RemoteAddr, true)
 			p.HandleH3WebSocket(w, r)
 			return
 		}

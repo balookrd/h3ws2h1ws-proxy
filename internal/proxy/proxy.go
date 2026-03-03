@@ -151,6 +151,7 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = bws.Close() }()
+	log.Printf("backend dial ok: remote=%s path=%s backend=%s", r.RemoteAddr, r.URL.Path, backendURL.String())
 	p.debugf("backend websocket connected: %s", backendURL.String())
 
 	metrics.Accepted.Inc()
@@ -200,10 +201,14 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 	_ = bws.Close()
 	wg.Wait()
 
-	metrics.SessionDuration.Observe(time.Since(sessionStarted).Seconds())
-	metrics.SessionTrafficBytes.WithLabelValues("h3_to_h1").Observe(float64(atomic.LoadUint64(&st.h3ToH1Bytes)))
-	metrics.SessionTrafficBytes.WithLabelValues("h1_to_h3").Observe(float64(atomic.LoadUint64(&st.h1ToH3Bytes)))
-	p.debugf("session finished: path=%s dur=%s h3_to_h1_bytes=%d h1_to_h3_bytes=%d err=%v", r.URL.Path, time.Since(sessionStarted), atomic.LoadUint64(&st.h3ToH1Bytes), atomic.LoadUint64(&st.h1ToH3Bytes), err1)
+	dur := time.Since(sessionStarted)
+	h3ToH1Bytes := atomic.LoadUint64(&st.h3ToH1Bytes)
+	h1ToH3Bytes := atomic.LoadUint64(&st.h1ToH3Bytes)
+	metrics.SessionDuration.Observe(dur.Seconds())
+	metrics.SessionTrafficBytes.WithLabelValues("h3_to_h1").Observe(float64(h3ToH1Bytes))
+	metrics.SessionTrafficBytes.WithLabelValues("h1_to_h3").Observe(float64(h1ToH3Bytes))
+	p.debugf("session finished: path=%s dur=%s h3_to_h1_bytes=%d h1_to_h3_bytes=%d err=%v", r.URL.Path, dur, h3ToH1Bytes, h1ToH3Bytes, err1)
+	log.Printf("backend session summary: remote=%s path=%s dur=%s h3_to_h1_bytes=%d h1_to_h3_bytes=%d err=%v", r.RemoteAddr, r.URL.Path, dur, h3ToH1Bytes, h1ToH3Bytes, err1)
 
 	if err1 != nil && !errors.Is(err1, context.Canceled) && !ws.IsNetClose(err1) {
 		metrics.Errors.WithLabelValues("session").Inc()
