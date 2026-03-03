@@ -3,6 +3,7 @@ package proxy
 import (
 	"bufio"
 	"context"
+	"encoding/hex"
 	"errors"
 	"io"
 	"log"
@@ -29,6 +30,18 @@ func debugf(enabled bool, format string, args ...any) {
 	}
 }
 
+func debugPacket(enabled bool, dir, kind string, payload []byte) {
+	if !enabled {
+		return
+	}
+	const previewLimit = 32
+	preview := payload
+	if len(preview) > previewLimit {
+		preview = preview[:previewLimit]
+	}
+	log.Printf("[debug] %s packet kind=%s bytes=%d preview_hex=%s", dir, kind, len(payload), hex.EncodeToString(preview))
+}
+
 func pumpH3ToBackend(ctx context.Context, s io.ReadWriter, bws *websocket.Conn, lim config.Limits, st *sessionTrafficStats, debug bool) error {
 	br := bufio.NewReaderSize(s, 64<<10)
 
@@ -44,6 +57,7 @@ func pumpH3ToBackend(ctx context.Context, s io.ReadWriter, bws *websocket.Conn, 
 		}
 		switch op {
 		case ws.OpText:
+			debugPacket(debug, "h3->h1", "text", msg)
 			metrics.Messages.WithLabelValues("h3_to_h1", "text").Inc()
 			metrics.MessageSize.WithLabelValues("h3_to_h1", "text").Observe(float64(len(msg)))
 			metrics.Bytes.WithLabelValues("h3_to_h1").Add(float64(len(msg)))
@@ -55,6 +69,7 @@ func pumpH3ToBackend(ctx context.Context, s io.ReadWriter, bws *websocket.Conn, 
 			}
 			return err
 		case ws.OpBinary:
+			debugPacket(debug, "h3->h1", "binary", msg)
 			metrics.Messages.WithLabelValues("h3_to_h1", "binary").Inc()
 			metrics.MessageSize.WithLabelValues("h3_to_h1", "binary").Observe(float64(len(msg)))
 			metrics.Bytes.WithLabelValues("h3_to_h1").Add(float64(len(msg)))
@@ -142,6 +157,7 @@ func pumpH3ToBackend(ctx context.Context, s io.ReadWriter, bws *websocket.Conn, 
 			}
 
 		case ws.OpPing:
+			debugPacket(debug, "h3->h1", "ping", f.Payload)
 			metrics.Frames.WithLabelValues("h3_to_h1", "ping").Inc()
 			metrics.Ctrl.WithLabelValues("ping").Inc()
 			if err := ws.WriteControlFrame(s, ws.OpPong, f.Payload); err != nil {
@@ -153,6 +169,7 @@ func pumpH3ToBackend(ctx context.Context, s io.ReadWriter, bws *websocket.Conn, 
 			}
 
 		case ws.OpPong:
+			debugPacket(debug, "h3->h1", "pong", f.Payload)
 			metrics.Frames.WithLabelValues("h3_to_h1", "pong").Inc()
 			metrics.Ctrl.WithLabelValues("pong").Inc()
 			if err := bws.WriteControl(websocket.PongMessage, f.Payload, time.Now().Add(5*time.Second)); err == nil {
@@ -160,6 +177,7 @@ func pumpH3ToBackend(ctx context.Context, s io.ReadWriter, bws *websocket.Conn, 
 			}
 
 		case ws.OpClose:
+			debugPacket(debug, "h3->h1", "close", f.Payload)
 			metrics.Frames.WithLabelValues("h3_to_h1", "close").Inc()
 			metrics.Ctrl.WithLabelValues("close").Inc()
 			code, reason := ws.ParseClosePayload(f.Payload)
@@ -174,6 +192,7 @@ func pumpH3ToBackend(ctx context.Context, s io.ReadWriter, bws *websocket.Conn, 
 
 func pumpBackendToH3(ctx context.Context, bws *websocket.Conn, s io.Writer, lim config.Limits, st *sessionTrafficStats, debug bool) error {
 	bws.SetPingHandler(func(appData string) error {
+		debugPacket(debug, "h1->h3", "ping", []byte(appData))
 		metrics.Frames.WithLabelValues("h1_to_h3", "ping").Inc()
 		metrics.Ctrl.WithLabelValues("ping").Inc()
 		if err := ws.WriteControlFrame(s, ws.OpPing, []byte(appData)); err == nil {
@@ -182,6 +201,7 @@ func pumpBackendToH3(ctx context.Context, bws *websocket.Conn, s io.Writer, lim 
 		return bws.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(5*time.Second))
 	})
 	bws.SetPongHandler(func(appData string) error {
+		debugPacket(debug, "h1->h3", "pong", []byte(appData))
 		metrics.Frames.WithLabelValues("h1_to_h3", "pong").Inc()
 		metrics.Ctrl.WithLabelValues("pong").Inc()
 		if err := ws.WriteControlFrame(s, ws.OpPong, []byte(appData)); err == nil {
@@ -190,6 +210,7 @@ func pumpBackendToH3(ctx context.Context, bws *websocket.Conn, s io.Writer, lim 
 		return nil
 	})
 	bws.SetCloseHandler(func(code int, text string) error {
+		debugPacket(debug, "h1->h3", "close", websocket.FormatCloseMessage(code, text))
 		metrics.Frames.WithLabelValues("h1_to_h3", "close").Inc()
 		metrics.Ctrl.WithLabelValues("close").Inc()
 		if err := ws.WriteCloseFrame(s, uint16(code), text); err == nil {
@@ -244,6 +265,7 @@ func pumpBackendToH3(ctx context.Context, bws *websocket.Conn, s io.Writer, lim 
 
 		switch mt {
 		case websocket.TextMessage:
+			debugPacket(debug, "h1->h3", "text", data)
 			metrics.Frames.WithLabelValues("h1_to_h3", "text").Inc()
 			metrics.Messages.WithLabelValues("h1_to_h3", "text").Inc()
 			metrics.MessageSize.WithLabelValues("h1_to_h3", "text").Observe(float64(len(data)))
@@ -256,6 +278,7 @@ func pumpBackendToH3(ctx context.Context, bws *websocket.Conn, s io.Writer, lim 
 			}
 			debugf(debug, "h1->h3 text message forwarded bytes=%d", len(data))
 		case websocket.BinaryMessage:
+			debugPacket(debug, "h1->h3", "binary", data)
 			metrics.Frames.WithLabelValues("h1_to_h3", "binary").Inc()
 			metrics.Messages.WithLabelValues("h1_to_h3", "binary").Inc()
 			metrics.MessageSize.WithLabelValues("h1_to_h3", "binary").Observe(float64(len(data)))
