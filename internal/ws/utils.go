@@ -36,5 +36,8 @@ func IsNetClose(err error) bool {
 		return true
 	}
 	s := err.Error()
-	return strings.Contains(s, "closed") || strings.Contains(s, "EOF") || strings.Contains(s, "canceled")
+	return strings.Contains(s, "closed") ||
+		strings.Contains(s, "EOF") ||
+		strings.Contains(s, "canceled") ||
+		strings.Contains(s, "NO_ERROR")
 }
