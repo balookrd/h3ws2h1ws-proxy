@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -182,6 +183,9 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	bws.SetReadLimit(p.Limits.MaxMessageSize)
 
+	upstream, proto := logContextFields(r)
+	p.debugf("ws payload log context: upstream=%q proto=%q", upstream, proto)
+
 	type pumpResult struct {
 		dir string
 		err error
@@ -193,13 +197,13 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		errCh <- pumpResult{dir: "h3_to_h1", err: pumpH3ToBackend(ctx, stream, bws, p.Limits, st, p.Debug)}
+		errCh <- pumpResult{dir: "h3_to_h1", err: pumpH3ToBackend(ctx, stream, bws, p.Limits, st, p.Debug, upstream, proto)}
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		errCh <- pumpResult{dir: "h1_to_h3", err: pumpBackendToH3(ctx, bws, stream, p.Limits, st, p.Debug)}
+		errCh <- pumpResult{dir: "h1_to_h3", err: pumpBackendToH3(ctx, bws, stream, p.Limits, st, p.Debug, upstream, proto)}
 	}()
 
 	first := <-errCh
@@ -240,6 +244,32 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 		metrics.Errors.WithLabelValues("session").Inc()
 		log.Printf("session ended: %v", err1)
 	}
+}
+
+func logContextFields(r *http.Request) (string, string) {
+	host := r.Host
+	if i := strings.Index(host, ":"); i >= 0 {
+		host = host[:i]
+	}
+	host = strings.TrimSpace(host)
+	upstream := host
+	if dot := strings.Index(upstream, "."); dot > 0 {
+		upstream = upstream[:dot]
+	}
+	upstream = strings.TrimSpace(upstream)
+	if upstream == "" {
+		upstream = "unknown"
+	}
+
+	proto := strings.Trim(strings.ToLower(strings.TrimSpace(r.URL.Path)), "/")
+	if slash := strings.LastIndex(proto, "/"); slash >= 0 {
+		proto = proto[slash+1:]
+	}
+	if proto == "" {
+		proto = "unknown"
+	}
+
+	return upstream, proto
 }
 
 func firstNonEmpty(v ...string) string {
