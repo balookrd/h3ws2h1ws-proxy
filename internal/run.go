@@ -305,28 +305,6 @@ func defaultQUICConfig(debug bool, connHadRequest, connRemoteAddr *sync.Map) *qu
 	return quicCfg
 }
 
-func summarizeQUICFrames(frames []logging.Frame) string {
-	if len(frames) == 0 {
-		return "none"
-	}
-	parts := make([]string, 0, len(frames))
-	for _, f := range frames {
-		switch ff := f.(type) {
-		case *logging.StreamFrame:
-			parts = append(parts, fmt.Sprintf("stream(id=%d off=%d len=%d fin=%v)", ff.StreamID, ff.Offset, ff.Length, ff.Fin))
-		case *logging.CryptoFrame:
-			parts = append(parts, fmt.Sprintf("crypto(off=%d len=%d)", ff.Offset, ff.Length))
-		case *logging.ConnectionCloseFrame:
-			parts = append(parts, fmt.Sprintf("conn_close(code=%d reason=%q app=%v)", ff.ErrorCode, ff.ReasonPhrase, ff.IsApplicationError))
-		case *logging.AckFrame:
-			parts = append(parts, fmt.Sprintf("ack(ranges=%d delay=%s)", len(ff.AckRanges), ff.DelayTime))
-		default:
-			parts = append(parts, fmt.Sprintf("%T", f))
-		}
-	}
-	return strings.Join(parts, ",")
-}
-
 func packetTypeName(pt logging.PacketType) string {
 	switch pt {
 	case logging.PacketTypeInitial:
