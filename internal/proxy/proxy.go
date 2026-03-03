@@ -184,7 +184,6 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 	bws.SetReadLimit(p.Limits.MaxMessageSize)
 
 	upstream, proto := logContextFields(r)
-	p.debugf("ws payload log context: upstream=%q proto=%q", upstream, proto)
 
 	type pumpResult struct {
 		dir string
