@@ -188,6 +188,10 @@ func defaultQUICConfig(debug bool, connHadRequest, connRemoteAddr *sync.Map) *qu
 			var rxClientUniStreamFrames int64
 			var rxServerBidiStreamFrames int64
 			var rxServerUniStreamFrames int64
+			var rxClientBidiStreamBytes int64
+			var rxClientUniStreamBytes int64
+			var rxServerBidiStreamBytes int64
+			var rxServerUniStreamBytes int64
 			var connStartedAt time.Time
 			var firstClientUniStreamID int64 = -1
 			var loggedClientUniFinHint bool
@@ -203,10 +207,13 @@ func defaultQUICConfig(debug bool, connHadRequest, connRemoteAddr *sync.Map) *qu
 					switch sid % 4 {
 					case 0:
 						atomic.AddInt64(&rxClientBidiStreamFrames, 1)
+						atomic.AddInt64(&rxClientBidiStreamBytes, int64(sf.Length))
 					case 1:
 						atomic.AddInt64(&rxServerBidiStreamFrames, 1)
+						atomic.AddInt64(&rxServerBidiStreamBytes, int64(sf.Length))
 					case 2:
 						atomic.AddInt64(&rxClientUniStreamFrames, 1)
+						atomic.AddInt64(&rxClientUniStreamBytes, int64(sf.Length))
 						if firstClientUniStreamID < 0 {
 							firstClientUniStreamID = int64(sf.StreamID)
 						}
@@ -216,6 +223,7 @@ func defaultQUICConfig(debug bool, connHadRequest, connRemoteAddr *sync.Map) *qu
 						}
 					case 3:
 						atomic.AddInt64(&rxServerUniStreamFrames, 1)
+						atomic.AddInt64(&rxServerUniStreamBytes, int64(sf.Length))
 					}
 				}
 			}
@@ -280,7 +288,7 @@ func defaultQUICConfig(debug bool, connHadRequest, connRemoteAddr *sync.Map) *qu
 							diagnoseMissingRequestStream(connID, err, clientBidi, clientUni, serverBidi, serverUni, firstClientUniStreamID)
 							return
 						}
-						log.Printf("[debug] quic conn closed: conn_id=%s err=%v rx_packets=%d tx_packets=%d dropped_packets=%d", connID, err, atomic.LoadInt64(&rxPackets), atomic.LoadInt64(&txPackets), atomic.LoadInt64(&droppedPackets))
+						log.Printf("[debug] quic conn closed: conn_id=%s err=%v rx_packets=%d tx_packets=%d dropped_packets=%d rx_stream_frames(client_bidi=%d client_uni=%d server_bidi=%d server_uni=%d) rx_stream_bytes(client_bidi=%d client_uni=%d server_bidi=%d server_uni=%d)", connID, err, atomic.LoadInt64(&rxPackets), atomic.LoadInt64(&txPackets), atomic.LoadInt64(&droppedPackets), atomic.LoadInt64(&rxClientBidiStreamFrames), atomic.LoadInt64(&rxClientUniStreamFrames), atomic.LoadInt64(&rxServerBidiStreamFrames), atomic.LoadInt64(&rxServerUniStreamFrames), atomic.LoadInt64(&rxClientBidiStreamBytes), atomic.LoadInt64(&rxClientUniStreamBytes), atomic.LoadInt64(&rxServerBidiStreamBytes), atomic.LoadInt64(&rxServerUniStreamBytes))
 						return
 					}
 					if !hadReq {
@@ -293,7 +301,7 @@ func defaultQUICConfig(debug bool, connHadRequest, connRemoteAddr *sync.Map) *qu
 						diagnoseMissingRequestStream(connID, err, clientBidi, clientUni, serverBidi, serverUni, firstClientUniStreamID)
 						return
 					}
-					log.Printf("[debug] quic conn closed cleanly: conn_id=%s rx_packets=%d tx_packets=%d dropped_packets=%d", connID, atomic.LoadInt64(&rxPackets), atomic.LoadInt64(&txPackets), atomic.LoadInt64(&droppedPackets))
+					log.Printf("[debug] quic conn closed cleanly: conn_id=%s rx_packets=%d tx_packets=%d dropped_packets=%d rx_stream_frames(client_bidi=%d client_uni=%d server_bidi=%d server_uni=%d) rx_stream_bytes(client_bidi=%d client_uni=%d server_bidi=%d server_uni=%d)", connID, atomic.LoadInt64(&rxPackets), atomic.LoadInt64(&txPackets), atomic.LoadInt64(&droppedPackets), atomic.LoadInt64(&rxClientBidiStreamFrames), atomic.LoadInt64(&rxClientUniStreamFrames), atomic.LoadInt64(&rxServerBidiStreamFrames), atomic.LoadInt64(&rxServerUniStreamFrames), atomic.LoadInt64(&rxClientBidiStreamBytes), atomic.LoadInt64(&rxClientUniStreamBytes), atomic.LoadInt64(&rxServerBidiStreamBytes), atomic.LoadInt64(&rxServerUniStreamBytes))
 				},
 				Debug: func(name, msg string) {
 					log.Printf("[debug] quic conn event: conn_id=%s name=%s msg=%s", connID, name, msg)
