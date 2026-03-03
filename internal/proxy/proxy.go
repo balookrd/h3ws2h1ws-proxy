@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -151,7 +152,25 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = bws.Close() }()
-	p.debugf("backend websocket connected: %s", backendURL.String())
+
+	backendStatus := ""
+	backendUpgrade := ""
+	backendConnection := ""
+	backendProto := ""
+	if resp != nil {
+		backendStatus = resp.Status
+		backendUpgrade = resp.Header.Get("Upgrade")
+		backendConnection = resp.Header.Get("Connection")
+		backendProto = resp.Header.Get("Sec-WebSocket-Protocol")
+		if resp.StatusCode != http.StatusSwitchingProtocols {
+			metrics.Errors.WithLabelValues("backend_dial").Inc()
+			log.Printf("backend websocket handshake unexpected status: backend=%s status=%s", backendURL.String(), resp.Status)
+			_ = ws.WriteCloseFrame(stream, 1011, "backend handshake failed")
+			return
+		}
+	}
+	log.Printf("backend dial ok: remote=%s path=%s backend=%s status=%s upgrade=%q connection=%q subprotocol=%q", r.RemoteAddr, r.URL.Path, backendURL.String(), backendStatus, backendUpgrade, backendConnection, backendProto)
+	p.debugf("backend websocket connected: %s (status=%s upgrade=%q connection=%q subprotocol=%q)", backendURL.String(), backendStatus, backendUpgrade, backendConnection, backendProto)
 
 	metrics.Accepted.Inc()
 	metrics.ActiveSessions.Inc()
@@ -164,6 +183,8 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	bws.SetReadLimit(p.Limits.MaxMessageSize)
 
+	upstream, proto := logContextFields(r)
+
 	type pumpResult struct {
 		dir string
 		err error
@@ -175,40 +196,79 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		errCh <- pumpResult{dir: "h3_to_h1", err: pumpH3ToBackend(ctx, stream, bws, p.Limits, st, p.Debug)}
+		errCh <- pumpResult{dir: "h3_to_h1", err: pumpH3ToBackend(ctx, stream, bws, p.Limits, st, p.Debug, upstream, proto)}
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		errCh <- pumpResult{dir: "h1_to_h3", err: pumpBackendToH3(ctx, bws, stream, p.Limits, st, p.Debug)}
+		errCh <- pumpResult{dir: "h1_to_h3", err: pumpBackendToH3(ctx, bws, stream, p.Limits, st, p.Debug, upstream, proto)}
 	}()
 
 	first := <-errCh
+	p.debugf("pump finished: dir=%s err=%v", first.dir, first.err)
 	err1 := first.err
 	if first.dir == "h3_to_h1" && (first.err == nil || errors.Is(first.err, io.EOF) || ws.IsNetClose(first.err)) {
+		p.debugf("h3_to_h1 finished first with graceful close; waiting for backend->client pump to finish")
 		second := <-errCh
+		p.debugf("pump finished: dir=%s err=%v", second.dir, second.err)
 		err1 = second.err
 	} else {
 		cancel()
 		_ = stream.Close()
 		_ = bws.Close()
-		<-errCh
+		second := <-errCh
+		p.debugf("pump finished after cancel: dir=%s err=%v", second.dir, second.err)
 	}
 	cancel()
 	_ = stream.Close()
 	_ = bws.Close()
 	wg.Wait()
 
-	metrics.SessionDuration.Observe(time.Since(sessionStarted).Seconds())
-	metrics.SessionTrafficBytes.WithLabelValues("h3_to_h1").Observe(float64(atomic.LoadUint64(&st.h3ToH1Bytes)))
-	metrics.SessionTrafficBytes.WithLabelValues("h1_to_h3").Observe(float64(atomic.LoadUint64(&st.h1ToH3Bytes)))
-	p.debugf("session finished: path=%s dur=%s h3_to_h1_bytes=%d h1_to_h3_bytes=%d err=%v", r.URL.Path, time.Since(sessionStarted), atomic.LoadUint64(&st.h3ToH1Bytes), atomic.LoadUint64(&st.h1ToH3Bytes), err1)
+	dur := time.Since(sessionStarted)
+	h3ToH1Bytes := atomic.LoadUint64(&st.h3ToH1Bytes)
+	h1ToH3Bytes := atomic.LoadUint64(&st.h1ToH3Bytes)
+	h3ToH1Messages := atomic.LoadUint64(&st.h3ToH1Messages)
+	h1ToH3Messages := atomic.LoadUint64(&st.h1ToH3Messages)
+	metrics.SessionDuration.Observe(dur.Seconds())
+	metrics.SessionTrafficBytes.WithLabelValues("h3_to_h1").Observe(float64(h3ToH1Bytes))
+	metrics.SessionTrafficBytes.WithLabelValues("h1_to_h3").Observe(float64(h1ToH3Bytes))
+	p.debugf("session finished: path=%s dur=%s h3_to_h1_bytes=%d h1_to_h3_bytes=%d h3_to_h1_msgs=%d h1_to_h3_msgs=%d err=%v", r.URL.Path, dur, h3ToH1Bytes, h1ToH3Bytes, h3ToH1Messages, h1ToH3Messages, err1)
+	log.Printf("backend session summary: remote=%s path=%s dur=%s h3_to_h1_bytes=%d h1_to_h3_bytes=%d h3_to_h1_msgs=%d h1_to_h3_msgs=%d err=%v", r.RemoteAddr, r.URL.Path, dur, h3ToH1Bytes, h1ToH3Bytes, h3ToH1Messages, h1ToH3Messages, err1)
+	if h1ToH3Messages == 0 {
+		log.Printf("backend diagnostic: no backend->client messages observed for remote=%s path=%s (backend=%s)", r.RemoteAddr, r.URL.Path, backendURL.String())
+	}
 
 	if err1 != nil && !errors.Is(err1, context.Canceled) && !ws.IsNetClose(err1) {
 		metrics.Errors.WithLabelValues("session").Inc()
 		log.Printf("session ended: %v", err1)
 	}
+}
+
+func logContextFields(r *http.Request) (string, string) {
+	host := r.Host
+	if i := strings.Index(host, ":"); i >= 0 {
+		host = host[:i]
+	}
+	host = strings.TrimSpace(host)
+	upstream := host
+	if dot := strings.Index(upstream, "."); dot > 0 {
+		upstream = upstream[:dot]
+	}
+	upstream = strings.TrimSpace(upstream)
+	if upstream == "" {
+		upstream = "unknown"
+	}
+
+	proto := strings.Trim(strings.ToLower(strings.TrimSpace(r.URL.Path)), "/")
+	if slash := strings.LastIndex(proto, "/"); slash >= 0 {
+		proto = proto[slash+1:]
+	}
+	if proto == "" {
+		proto = "unknown"
+	}
+
+	return upstream, proto
 }
 
 func firstNonEmpty(v ...string) string {
