@@ -385,11 +385,11 @@ func isExpectedDroppedPacket(pt logging.PacketType, reason logging.PacketDropRea
 func diagnoseMissingRequestStream(connID quic.ConnectionID, closeErr error, clientBidi, clientUni, serverBidi, serverUni, firstClientUniStreamID int64) {
 	if clientBidi > 0 {
 		if closeErr != nil && strings.Contains(closeErr.Error(), "expected first frame to be a HEADERS frame") {
-			metrics.PreRequestClose.WithLabelValues("bidi_first_frame_not_headers").Inc()
+			metrics.PreRequestClose.WithLabelValues("request_stream_invalid_first_frame_or_headers").Inc()
 			metrics.Errors.WithLabelValues("h3_framing").Inc()
-			log.Printf("[debug] quic conn request-stream diagnosis: conn_id=%s client opened a bidirectional stream but first HTTP/3 frame was not HEADERS", connID)
-			log.Printf("[debug] quic conn request-stream diagnosis: conn_id=%s failure occurs before request reaches handler; likely non-HTTP/3 framing on request stream", connID)
-			log.Printf("[debug] quic conn request-stream diagnosis: conn_id=%s remediation: verify client sends HEADERS as first frame on request stream (RFC9114), then Extended CONNECT for RFC9220", connID)
+			log.Printf("[debug] quic conn request-stream diagnosis: conn_id=%s request stream failed before handler with reason=%q", connID, closeErr.Error())
+			log.Printf("[debug] quic conn request-stream diagnosis: conn_id=%s in quic-go this reason can mean either non-HEADERS first frame OR invalid HEADERS/QPACK block", connID)
+			log.Printf("[debug] quic conn request-stream diagnosis: conn_id=%s remediation: verify first request-stream frame is HEADERS (RFC9114) and header block is valid QPACK for Extended CONNECT (RFC9220)", connID)
 		}
 		return
 	}
