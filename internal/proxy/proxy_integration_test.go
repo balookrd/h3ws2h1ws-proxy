@@ -36,6 +36,7 @@ func TestRealTrafficClientQUICBackendRoundTrip(t *testing.T) {
 	proxy := &Proxy{
 		Backend:    backendParsed,
 		PathRegexp: regexp.MustCompile(`^/ws$`),
+		Debug:      true,
 		Limits: config.Limits{
 			MaxFrameSize:   1 << 20,
 			MaxMessageSize: 1 << 20,

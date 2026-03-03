@@ -50,11 +50,11 @@ func TestQUICToBackendAndBackWithoutLoss(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		errCh <- pumpH3ToBackend(ctx, proxySide, backendConn, limits, stats, false, "test-upstream", "h3")
+		errCh <- pumpH3ToBackend(ctx, proxySide, backendConn, limits, stats, true, "test-upstream", "h3")
 	}()
 	go func() {
 		defer wg.Done()
-		errCh <- pumpBackendToH3(ctx, backendConn, proxySide, limits, stats, false, "test-upstream", "h3")
+		errCh <- pumpBackendToH3(ctx, backendConn, proxySide, limits, stats, true, "test-upstream", "h3")
 	}()
 
 	original := bytes.Repeat([]byte("quic-payload-"), 10)
