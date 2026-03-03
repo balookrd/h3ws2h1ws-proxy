@@ -68,7 +68,6 @@ func Run() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if cfg.Debug {
-			connHadRequest.Store(r.RemoteAddr, true)
 			log.Printf("[debug] incoming http request: method=%s proto=%s host=%s path=%s remote=%s", r.Method, r.Proto, r.Host, r.URL.String(), r.RemoteAddr)
 		}
 
