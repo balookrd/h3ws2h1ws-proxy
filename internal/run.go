@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"h3ws2h1ws-proxy/internal/config"
+	"h3ws2h1ws-proxy/internal/metrics"
 	"h3ws2h1ws-proxy/internal/proxy"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -276,7 +277,7 @@ func defaultQUICConfig(debug bool, connHadRequest, connRemoteAddr *sync.Map) *qu
 							serverUni := atomic.LoadInt64(&rxServerUniStreamFrames)
 							lifetime := time.Since(connStartedAt)
 							log.Printf("[debug] quic conn closed before any request: conn_id=%s err=%v lifetime=%s rx_packets=%d tx_packets=%d dropped_packets=%d rx_stream_frames(client_bidi=%d client_uni=%d server_bidi=%d server_uni=%d)", connID, err, lifetime, atomic.LoadInt64(&rxPackets), atomic.LoadInt64(&txPackets), atomic.LoadInt64(&droppedPackets), clientBidi, clientUni, serverBidi, serverUni)
-							diagnoseMissingRequestStream(connID, clientBidi, clientUni, serverBidi, serverUni, firstClientUniStreamID)
+							diagnoseMissingRequestStream(connID, err, clientBidi, clientUni, serverBidi, serverUni, firstClientUniStreamID)
 							return
 						}
 						log.Printf("[debug] quic conn closed: conn_id=%s err=%v rx_packets=%d tx_packets=%d dropped_packets=%d", connID, err, atomic.LoadInt64(&rxPackets), atomic.LoadInt64(&txPackets), atomic.LoadInt64(&droppedPackets))
@@ -289,7 +290,7 @@ func defaultQUICConfig(debug bool, connHadRequest, connRemoteAddr *sync.Map) *qu
 						serverUni := atomic.LoadInt64(&rxServerUniStreamFrames)
 						lifetime := time.Since(connStartedAt)
 						log.Printf("[debug] quic conn closed cleanly before any request: conn_id=%s lifetime=%s rx_packets=%d tx_packets=%d dropped_packets=%d rx_stream_frames(client_bidi=%d client_uni=%d server_bidi=%d server_uni=%d)", connID, lifetime, atomic.LoadInt64(&rxPackets), atomic.LoadInt64(&txPackets), atomic.LoadInt64(&droppedPackets), clientBidi, clientUni, serverBidi, serverUni)
-						diagnoseMissingRequestStream(connID, clientBidi, clientUni, serverBidi, serverUni, firstClientUniStreamID)
+						diagnoseMissingRequestStream(connID, err, clientBidi, clientUni, serverBidi, serverUni, firstClientUniStreamID)
 						return
 					}
 					log.Printf("[debug] quic conn closed cleanly: conn_id=%s rx_packets=%d tx_packets=%d dropped_packets=%d", connID, atomic.LoadInt64(&rxPackets), atomic.LoadInt64(&txPackets), atomic.LoadInt64(&droppedPackets))
@@ -302,28 +303,6 @@ func defaultQUICConfig(debug bool, connHadRequest, connRemoteAddr *sync.Map) *qu
 	}
 
 	return quicCfg
-}
-
-func summarizeQUICFrames(frames []logging.Frame) string {
-	if len(frames) == 0 {
-		return "none"
-	}
-	parts := make([]string, 0, len(frames))
-	for _, f := range frames {
-		switch ff := f.(type) {
-		case *logging.StreamFrame:
-			parts = append(parts, fmt.Sprintf("stream(id=%d off=%d len=%d fin=%v)", ff.StreamID, ff.Offset, ff.Length, ff.Fin))
-		case *logging.CryptoFrame:
-			parts = append(parts, fmt.Sprintf("crypto(off=%d len=%d)", ff.Offset, ff.Length))
-		case *logging.ConnectionCloseFrame:
-			parts = append(parts, fmt.Sprintf("conn_close(code=%d reason=%q app=%v)", ff.ErrorCode, ff.ReasonPhrase, ff.IsApplicationError))
-		case *logging.AckFrame:
-			parts = append(parts, fmt.Sprintf("ack(ranges=%d delay=%s)", len(ff.AckRanges), ff.DelayTime))
-		default:
-			parts = append(parts, fmt.Sprintf("%T", f))
-		}
-	}
-	return strings.Join(parts, ",")
 }
 
 func packetTypeName(pt logging.PacketType) string {
@@ -381,21 +360,31 @@ func isExpectedDroppedPacket(pt logging.PacketType, reason logging.PacketDropRea
 	return pt == logging.PacketTypeNotDetermined && reason == logging.PacketDropUnknownConnectionID
 }
 
-func diagnoseMissingRequestStream(connID quic.ConnectionID, clientBidi, clientUni, serverBidi, serverUni, firstClientUniStreamID int64) {
+func diagnoseMissingRequestStream(connID quic.ConnectionID, closeErr error, clientBidi, clientUni, serverBidi, serverUni, firstClientUniStreamID int64) {
 	if clientBidi > 0 {
+		if closeErr != nil && strings.Contains(closeErr.Error(), "expected first frame to be a HEADERS frame") {
+			metrics.PreRequestClose.WithLabelValues("request_stream_invalid_first_frame_or_headers").Inc()
+			metrics.Errors.WithLabelValues("h3_framing").Inc()
+			log.Printf("[debug] quic conn request-stream diagnosis: conn_id=%s request stream failed before handler with reason=%q", connID, closeErr.Error())
+			log.Printf("[debug] quic conn request-stream diagnosis: conn_id=%s in quic-go this reason can mean either non-HEADERS first frame OR invalid HEADERS/QPACK block", connID)
+			log.Printf("[debug] quic conn request-stream diagnosis: conn_id=%s remediation: verify first request-stream frame is HEADERS (RFC9114) and header block is valid QPACK for Extended CONNECT (RFC9220)", connID)
+		}
 		return
 	}
 	log.Printf("[debug] quic conn request-stream hint: conn_id=%s no client-initiated bidi stream frames observed (expected stream id 0/4/8... for CONNECT requests)", connID)
 	switch {
 	case clientUni > 0 && serverBidi == 0 && serverUni == 0:
+		metrics.PreRequestClose.WithLabelValues("no_bidi_request_stream").Inc()
 		log.Printf("[debug] quic conn request-stream diagnosis: conn_id=%s only client unidirectional stream traffic observed (typically control stream / SETTINGS), no request stream created", connID)
 		if firstClientUniStreamID >= 0 {
 			log.Printf("[debug] quic conn request-stream diagnosis: conn_id=%s first_client_uni_stream_id=%d (expected control stream id=2 on first h3 unidirectional stream)", connID, firstClientUniStreamID)
 		}
 		log.Printf("[debug] quic conn request-stream diagnosis: conn_id=%s peer likely closed before opening request stream; verify client actually sends CONNECT on client-initiated bidirectional stream", connID)
 	case clientUni == 0 && serverBidi == 0 && serverUni == 0:
+		metrics.PreRequestClose.WithLabelValues("no_h3_stream_activity").Inc()
 		log.Printf("[debug] quic conn request-stream diagnosis: conn_id=%s handshake completed but no HTTP/3 stream activity followed", connID)
 	default:
+		metrics.PreRequestClose.WithLabelValues("stream_activity_without_request").Inc()
 		log.Printf("[debug] quic conn request-stream diagnosis: conn_id=%s stream activity observed without client request stream (client_uni=%d server_bidi=%d server_uni=%d)", connID, clientUni, serverBidi, serverUni)
 	}
 }

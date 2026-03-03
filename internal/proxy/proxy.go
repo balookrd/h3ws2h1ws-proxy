@@ -65,15 +65,10 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// RFC 9220 uses Extended CONNECT with the pseudo-header ":protocol = websocket".
-	// In Go's net/http API, pseudo-headers are not represented consistently across
-	// implementations. In particular, r.Proto is the HTTP version (e.g. "HTTP/3.0"),
-	// not the value of ":protocol".
-	//
-	// quic-go may surface ":protocol" either as a regular header ("Protocol") or not
-	// at all. We therefore treat it as an *optional* validation signal:
-	//   - if a protocol header is present and is not "websocket" => reject
-	//   - if it is absent => accept based on other WebSocket headers
+	// Compatibility note:
+	// Some clients / gateways still omit RFC8441 `:protocol` and
+	// Sec-WebSocket-Version over H3 Extended CONNECT.
+	// We reject only explicitly invalid values, but tolerate absence.
 	if proto := firstNonEmpty(
 		r.Header.Get(":protocol"),
 		r.Header.Get("protocol"),
@@ -86,14 +81,17 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 
 	key := r.Header.Get("Sec-WebSocket-Key")
 	ver := r.Header.Get("Sec-WebSocket-Version")
-	if key == "" || ver != "13" {
+	if ver != "" && ver != "13" {
 		metrics.Rejected.WithLabelValues("bad_headers").Inc()
 		http.Error(w, "missing/invalid websocket headers", http.StatusBadRequest)
 		return
 	}
 
 	rc := http.NewResponseController(w)
-	if err := rc.EnableFullDuplex(); err != nil {
+	fullDuplexEnabled := false
+	if err := rc.EnableFullDuplex(); err == nil {
+		fullDuplexEnabled = true
+	} else if !errors.Is(err, http.ErrNotSupported) {
 		p.debugf("enable full duplex failed: %v", err)
 	}
 
@@ -104,7 +102,10 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Sec-WebSocket-Accept", ws.ComputeAccept(key))
+	if key != "" {
+		w.Header().Set("Sec-WebSocket-Accept", ws.ComputeAccept(key))
+	}
+
 	subp := r.Header.Get("Sec-WebSocket-Protocol")
 	if subp != "" {
 		w.Header().Set("Sec-WebSocket-Protocol", ws.PickFirstToken(subp))
@@ -117,6 +118,12 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 
 	stream := hs.HTTPStream()
 	defer func() { _ = stream.Close() }()
+	if !fullDuplexEnabled {
+		// HTTP/3 handlers may not implement ResponseController full-duplex hook,
+		// but stream takeover gives us bidirectional access to the request stream.
+		fullDuplexEnabled = true
+	}
+	p.debugf("full duplex mode: enabled=%v", fullDuplexEnabled)
 	p.debugf("http3 stream takeover success: path=%s", r.URL.Path)
 
 	dialer := websocket.Dialer{
