@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -63,30 +64,67 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "path not allowed", http.StatusNotFound)
 		return
 	}
+
+	// Compatibility note:
+	// Some clients / gateways still omit RFC8441 `:protocol` and
+	// Sec-WebSocket-Version over H3 Extended CONNECT.
+	// We reject only explicitly invalid values, but tolerate absence.
+	if proto := firstNonEmpty(
+		r.Header.Get(":protocol"),
+		r.Header.Get("protocol"),
+		r.Header.Get("Protocol"),
+	); proto != "" && proto != "websocket" {
+		metrics.Rejected.WithLabelValues("bad_headers").Inc()
+		http.Error(w, "missing/invalid :protocol websocket", http.StatusBadRequest)
+		return
+	}
+
 	key := r.Header.Get("Sec-WebSocket-Key")
 	ver := r.Header.Get("Sec-WebSocket-Version")
-	if key == "" || ver != "13" {
+	if ver != "" && ver != "13" {
 		metrics.Rejected.WithLabelValues("bad_headers").Inc()
 		http.Error(w, "missing/invalid websocket headers", http.StatusBadRequest)
 		return
 	}
 
-	hs, ok := r.Body.(http3.HTTPStreamer)
+	rc := http.NewResponseController(w)
+	fullDuplexEnabled := false
+	if err := rc.EnableFullDuplex(); err == nil {
+		fullDuplexEnabled = true
+	} else if !errors.Is(err, http.ErrNotSupported) {
+		p.debugf("enable full duplex failed: %v", err)
+	}
+
+	hs, ok := w.(http3.HTTPStreamer)
 	if !ok {
 		metrics.Errors.WithLabelValues("no_stream_takeover").Inc()
 		http.Error(w, "http3 stream takeover not supported", http.StatusInternalServerError)
 		return
 	}
-	stream := hs.HTTPStream()
-	defer func() { _ = stream.Close() }()
-	p.debugf("http3 stream takeover success: path=%s", r.URL.Path)
 
-	w.Header().Set("Sec-WebSocket-Accept", ws.ComputeAccept(key))
+	if key != "" {
+		w.Header().Set("Sec-WebSocket-Accept", ws.ComputeAccept(key))
+	}
+
 	subp := r.Header.Get("Sec-WebSocket-Protocol")
 	if subp != "" {
 		w.Header().Set("Sec-WebSocket-Protocol", ws.PickFirstToken(subp))
 	}
 	w.WriteHeader(http.StatusOK)
+	p.debugf("rfc9220 handshake response sent: status=200 path=%s", r.URL.Path)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+
+	stream := hs.HTTPStream()
+	defer func() { _ = stream.Close() }()
+	if !fullDuplexEnabled {
+		// HTTP/3 handlers may not implement ResponseController full-duplex hook,
+		// but stream takeover gives us bidirectional access to the request stream.
+		fullDuplexEnabled = true
+	}
+	p.debugf("full duplex mode: enabled=%v", fullDuplexEnabled)
+	p.debugf("http3 stream takeover success: path=%s", r.URL.Path)
 
 	dialer := websocket.Dialer{
 		Proxy:             http.ProxyFromEnvironment,
@@ -126,22 +164,37 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	bws.SetReadLimit(p.Limits.MaxMessageSize)
 
+	type pumpResult struct {
+		dir string
+		err error
+	}
+
 	var wg sync.WaitGroup
-	errCh := make(chan error, 2)
+	errCh := make(chan pumpResult, 2)
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		errCh <- pumpH3ToBackend(ctx, stream, bws, p.Limits, st, p.Debug)
+		errCh <- pumpResult{dir: "h3_to_h1", err: pumpH3ToBackend(ctx, stream, bws, p.Limits, st, p.Debug)}
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		errCh <- pumpBackendToH3(ctx, bws, stream, p.Limits, st, p.Debug)
+		errCh <- pumpResult{dir: "h1_to_h3", err: pumpBackendToH3(ctx, bws, stream, p.Limits, st, p.Debug)}
 	}()
 
-	err1 := <-errCh
+	first := <-errCh
+	err1 := first.err
+	if first.dir == "h3_to_h1" && (first.err == nil || errors.Is(first.err, io.EOF) || ws.IsNetClose(first.err)) {
+		second := <-errCh
+		err1 = second.err
+	} else {
+		cancel()
+		_ = stream.Close()
+		_ = bws.Close()
+		<-errCh
+	}
 	cancel()
 	_ = stream.Close()
 	_ = bws.Close()
@@ -156,4 +209,13 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 		metrics.Errors.WithLabelValues("session").Inc()
 		log.Printf("session ended: %v", err1)
 	}
+}
+
+func firstNonEmpty(v ...string) string {
+	for _, s := range v {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
 }
