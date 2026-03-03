@@ -88,7 +88,10 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rc := http.NewResponseController(w)
-	if err := rc.EnableFullDuplex(); err != nil {
+	fullDuplexEnabled := false
+	if err := rc.EnableFullDuplex(); err == nil {
+		fullDuplexEnabled = true
+	} else if !errors.Is(err, http.ErrNotSupported) {
 		p.debugf("enable full duplex failed: %v", err)
 	}
 
@@ -115,6 +118,12 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 
 	stream := hs.HTTPStream()
 	defer func() { _ = stream.Close() }()
+	if !fullDuplexEnabled {
+		// HTTP/3 handlers may not implement ResponseController full-duplex hook,
+		// but stream takeover gives us bidirectional access to the request stream.
+		fullDuplexEnabled = true
+	}
+	p.debugf("full duplex mode: enabled=%v", fullDuplexEnabled)
 	p.debugf("http3 stream takeover success: path=%s", r.URL.Path)
 
 	dialer := websocket.Dialer{
