@@ -12,6 +12,7 @@
 - Ограничивать общее число одновременных сессий (`max-conns`).
 - Проксировать control frames (`ping`, `pong`, `close`) и корректно завершать сессии.
 - Отдавать Prometheus-метрики на отдельном HTTP endpoint (`/metrics`).
+- Отдавать health-check endpoints для проверки живости (`/health/tcp`, `/health/udp`).
 
 ## Архитектура и назначение модулей
 
@@ -129,6 +130,10 @@ docker run --rm \
 ## Метрики
 
 Endpoint: `http://<metrics-addr>/metrics` (доступен только если задан `-metrics`)
+
+Health-check endpoints (на основном HTTP/3 listener):
+- `/health/tcp` → `200 OK` + `ok`
+- `/health/udp` → `200 OK` + `ok`
 
 Ключевые метрики:
 - `h3ws_proxy_active_sessions`

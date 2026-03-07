@@ -65,26 +65,7 @@ func Run() error {
 	var connHadRequest sync.Map
 	var connRemoteAddr sync.Map
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if cfg.Debug {
-			log.Printf("[debug] incoming http request: method=%s proto=%s host=%s path=%s remote=%s", r.Method, r.Proto, r.Host, r.URL.String(), r.RemoteAddr)
-		}
-
-		if strings.ToUpper(r.Method) == http.MethodConnect {
-			connHadRequest.Store(r.RemoteAddr, true)
-			p.HandleH3WebSocket(w, r)
-			return
-		}
-
-		if r.URL.Path == "/" {
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("ok\n"))
-			return
-		}
-
-		http.NotFound(w, r)
-	})
+	mux := newProxyHandler(cfg, p, &connHadRequest)
 
 	quicCfg := defaultQUICConfig(cfg.Debug, &connHadRequest, &connRemoteAddr)
 	tlsCfg, err := loadServerTLSConfig(cfg.CertFile, cfg.KeyFile)
@@ -119,6 +100,34 @@ func Run() error {
 		return fmt.Errorf("ListenAndServe: %w", err)
 	}
 	return nil
+}
+
+func newProxyHandler(cfg config.Config, p *proxy.Proxy, connHadRequest *sync.Map) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if cfg.Debug {
+			log.Printf("[debug] incoming http request: method=%s proto=%s host=%s path=%s remote=%s", r.Method, r.Proto, r.Host, r.URL.String(), r.RemoteAddr)
+		}
+
+		if r.Method != http.MethodConnect {
+			switch r.URL.Path {
+			case "/", "/health/tcp", "/health/udp":
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("ok\n"))
+				return
+			default:
+				http.NotFound(w, r)
+				return
+			}
+		}
+
+		if strings.ToUpper(r.Method) == http.MethodConnect {
+			connHadRequest.Store(r.RemoteAddr, true)
+			p.HandleH3WebSocket(w, r)
+			return
+		}
+	})
+	return mux
 }
 
 func parseConfig() config.Config {
