@@ -21,6 +21,7 @@ import (
 	"h3ws2h1ws-proxy/internal/config"
 	"h3ws2h1ws-proxy/internal/metrics"
 	"h3ws2h1ws-proxy/internal/proxy"
+	"h3ws2h1ws-proxy/internal/ws"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/quic-go/quic-go"
@@ -109,25 +110,41 @@ func newProxyHandler(cfg config.Config, p *proxy.Proxy, connHadRequest *sync.Map
 			log.Printf("[debug] incoming http request: method=%s proto=%s host=%s path=%s remote=%s", r.Method, r.Proto, r.Host, r.URL.String(), r.RemoteAddr)
 		}
 
+		if connHadRequest != nil {
+			connHadRequest.Store(r.RemoteAddr, true)
+		}
+
+		if isHealthPath(r.URL.Path) {
+			if r.Method == http.MethodConnect {
+				if key := r.Header.Get("Sec-WebSocket-Key"); key != "" {
+					w.Header().Set("Sec-WebSocket-Accept", ws.ComputeAccept(key))
+				}
+				if subp := r.Header.Get("Sec-WebSocket-Protocol"); subp != "" {
+					w.Header().Set("Sec-WebSocket-Protocol", ws.PickFirstToken(subp))
+				}
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("ok\n"))
+			return
+		}
+
 		if r.Method != http.MethodConnect {
-			switch r.URL.Path {
-			case "/", "/health/tcp", "/health/udp":
+			if r.URL.Path == "/" {
 				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write([]byte("ok\n"))
 				return
-			default:
-				http.NotFound(w, r)
-				return
 			}
-		}
-
-		if strings.ToUpper(r.Method) == http.MethodConnect {
-			connHadRequest.Store(r.RemoteAddr, true)
-			p.HandleH3WebSocket(w, r)
+			http.NotFound(w, r)
 			return
 		}
+
+		p.HandleH3WebSocket(w, r)
 	})
 	return mux
+}
+
+func isHealthPath(path string) bool {
+	return path == "/health/tcp" || path == "/health/udp"
 }
 
 func parseConfig() config.Config {

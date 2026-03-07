@@ -8,6 +8,7 @@ import (
 
 	"h3ws2h1ws-proxy/internal/config"
 	"h3ws2h1ws-proxy/internal/proxy"
+	"h3ws2h1ws-proxy/internal/ws"
 )
 
 func TestNewProxyHandlerHealthEndpoints(t *testing.T) {
@@ -17,22 +18,48 @@ func TestNewProxyHandlerHealthEndpoints(t *testing.T) {
 	h := newProxyHandler(cfg, &proxy.Proxy{}, nil)
 
 	tests := []struct {
-		name   string
-		path   string
-		status int
-		body   string
+		name    string
+		method  string
+		path    string
+		headers map[string]string
+		status  int
+		body    string
+		assert  func(t *testing.T, rr *httptest.ResponseRecorder)
 	}{
-		{name: "root", path: "/", status: http.StatusOK, body: "ok\n"},
-		{name: "health tcp", path: "/health/tcp", status: http.StatusOK, body: "ok\n"},
-		{name: "health udp", path: "/health/udp", status: http.StatusOK, body: "ok\n"},
-		{name: "not found", path: "/health", status: http.StatusNotFound, body: "404 page not found\n"},
+		{name: "root", method: http.MethodGet, path: "/", status: http.StatusOK, body: "ok\n"},
+		{name: "health tcp get", method: http.MethodGet, path: "/health/tcp", status: http.StatusOK, body: "ok\n"},
+		{name: "health udp get", method: http.MethodGet, path: "/health/udp", status: http.StatusOK, body: "ok\n"},
+		{
+			name:   "health tcp connect with websocket headers",
+			method: http.MethodConnect,
+			path:   "/health/tcp",
+			headers: map[string]string{
+				"Sec-WebSocket-Key":      "dGhlIHNhbXBsZSBub25jZQ==",
+				"Sec-WebSocket-Protocol": "chat, superchat",
+			},
+			status: http.StatusOK,
+			body:   "ok\n",
+			assert: func(t *testing.T, rr *httptest.ResponseRecorder) {
+				t.Helper()
+				if got, want := rr.Header().Get("Sec-WebSocket-Accept"), ws.ComputeAccept("dGhlIHNhbXBsZSBub25jZQ=="); got != want {
+					t.Fatalf("Sec-WebSocket-Accept: got %q, want %q", got, want)
+				}
+				if got, want := rr.Header().Get("Sec-WebSocket-Protocol"), "chat"; got != want {
+					t.Fatalf("Sec-WebSocket-Protocol: got %q, want %q", got, want)
+				}
+			},
+		},
+		{name: "not found", method: http.MethodGet, path: "/health", status: http.StatusNotFound, body: "404 page not found\n"},
 	}
 
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			req := httptest.NewRequest(tc.method, tc.path, nil)
+			for k, v := range tc.headers {
+				req.Header.Set(k, v)
+			}
 			rr := httptest.NewRecorder()
 
 			h.ServeHTTP(rr, req)
@@ -42,6 +69,9 @@ func TestNewProxyHandlerHealthEndpoints(t *testing.T) {
 			}
 			if rr.Body.String() != tc.body {
 				t.Fatalf("body: got %q, want %q", rr.Body.String(), tc.body)
+			}
+			if tc.assert != nil {
+				tc.assert(t, rr)
 			}
 		})
 	}
