@@ -154,13 +154,8 @@ func handleHealthRequest(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 
-	hs, ok := w.(http3.HTTPStreamer)
-	if !ok {
-		return
-	}
-	stream := hs.HTTPStream()
-	defer func() { _ = stream.Close() }()
-	_ = ws.WriteCloseFrame(stream, 1000, "healthcheck")
+	// For CONNECT health probes we intentionally finish after 200 response headers.
+	// Probe clients usually validate the handshake status and close the stream themselves.
 }
 
 func parseConfig() config.Config {
