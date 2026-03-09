@@ -115,6 +115,10 @@ func newProxyHandler(cfg config.Config, p *proxy.Proxy, connHadRequest *sync.Map
 		}
 
 		path := requestPath(r)
+		if path != r.URL.Path {
+			r.URL.Path = path
+			r.URL.RawPath = ""
+		}
 		if isHealthPath(path) {
 			handleHealthRequest(w, r)
 			return
