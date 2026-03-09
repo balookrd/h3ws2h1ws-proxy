@@ -182,9 +182,17 @@ func handleHealthRequest(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Sec-WebSocket-Protocol", ws.PickFirstToken(subp))
 	}
 
-	// For CONNECT health probes we only acknowledge CONNECT with 200 and
-	// let the client close its probe stream/connection lifecycle.
+	// For CONNECT health probes we acknowledge 200 and immediately complete
+	// a minimal websocket lifecycle with a normal close frame.
 	w.WriteHeader(http.StatusOK)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	if hs, ok := w.(http3.HTTPStreamer); ok {
+		stream := hs.HTTPStream()
+		_ = ws.WriteCloseFrame(stream, 1000, "healthcheck")
+		_ = stream.Close()
+	}
 }
 
 func parseConfig() config.Config {
