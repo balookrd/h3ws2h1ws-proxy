@@ -10,7 +10,6 @@ import (
 
 	"h3ws2h1ws-proxy/internal/config"
 	"h3ws2h1ws-proxy/internal/proxy"
-	"h3ws2h1ws-proxy/internal/ws"
 )
 
 func TestNewProxyHandlerHealthEndpoints(t *testing.T) {
@@ -31,26 +30,7 @@ func TestNewProxyHandlerHealthEndpoints(t *testing.T) {
 		{name: "root", method: http.MethodGet, path: "/", status: http.StatusOK, body: "ok\n"},
 		{name: "health tcp get", method: http.MethodGet, path: "/health/tcp", status: http.StatusOK, body: "ok\n"},
 		{name: "health udp get", method: http.MethodGet, path: "/health/udp", status: http.StatusOK, body: "ok\n"},
-		{
-			name:   "health tcp connect with websocket headers",
-			method: http.MethodConnect,
-			path:   "/health/tcp",
-			headers: map[string]string{
-				"Sec-WebSocket-Key":      "dGhlIHNhbXBsZSBub25jZQ==",
-				"Sec-WebSocket-Protocol": "chat, superchat",
-			},
-			status: http.StatusOK,
-			body:   "",
-			assert: func(t *testing.T, rr *httptest.ResponseRecorder) {
-				t.Helper()
-				if got, want := rr.Header().Get("Sec-WebSocket-Accept"), ws.ComputeAccept("dGhlIHNhbXBsZSBub25jZQ=="); got != want {
-					t.Fatalf("Sec-WebSocket-Accept: got %q, want %q", got, want)
-				}
-				if got, want := rr.Header().Get("Sec-WebSocket-Protocol"), "chat"; got != want {
-					t.Fatalf("Sec-WebSocket-Protocol: got %q, want %q", got, want)
-				}
-			},
-		},
+		{name: "health tcp connect", method: http.MethodConnect, path: "/health/tcp", status: http.StatusOK, body: ""},
 		{name: "not found", method: http.MethodGet, path: "/health", status: http.StatusNotFound, body: "404 page not found\n"},
 	}
 

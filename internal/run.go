@@ -21,7 +21,6 @@ import (
 	"h3ws2h1ws-proxy/internal/config"
 	"h3ws2h1ws-proxy/internal/metrics"
 	"h3ws2h1ws-proxy/internal/proxy"
-	"h3ws2h1ws-proxy/internal/ws"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/quic-go/quic-go"
@@ -175,26 +174,10 @@ func handleHealthRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if key := r.Header.Get("Sec-WebSocket-Key"); key != "" {
-		w.Header().Set("Sec-WebSocket-Accept", ws.ComputeAccept(key))
-	}
-	if subp := r.Header.Get("Sec-WebSocket-Protocol"); subp != "" {
-		w.Header().Set("Sec-WebSocket-Protocol", ws.PickFirstToken(subp))
-	}
-
-	// For CONNECT health probes we acknowledge 200 and immediately complete
-	// a minimal websocket lifecycle with a normal close frame.
+	// For CONNECT health probes return a neutral 200 response only.
+	// No websocket-specific response headers or frames are emitted here.
 	w.WriteHeader(http.StatusOK)
-	if f, ok := w.(http.Flusher); ok {
-		f.Flush()
-	}
-	if hs, ok := w.(http3.HTTPStreamer); ok {
-		stream := hs.HTTPStream()
-		_ = ws.WriteCloseFrame(stream, 1000, "healthcheck")
-		_ = stream.Close()
-	}
 }
-
 func parseConfig() config.Config {
 	var cfg config.Config
 
