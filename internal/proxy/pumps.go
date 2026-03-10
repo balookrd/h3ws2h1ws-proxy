@@ -45,7 +45,7 @@ func debugWSPayload(enabled bool, flow string, payload []byte) {
 func pumpH3ToBackend(ctx context.Context, s io.ReadWriter, bws *websocket.Conn, lim config.Limits, st *sessionTrafficStats, debug bool, upstream, proto string) error {
 	_ = upstream
 	_ = proto
-	br := bufio.NewReaderSize(s, 64<<10)
+	br := bufio.NewReaderSize(s, 256<<10)
 
 	var (
 		assembling   bool
@@ -150,8 +150,7 @@ func pumpH3ToBackend(ctx context.Context, s io.ReadWriter, bws *websocket.Conn, 
 				return errors.New("message too big")
 			}
 			if f.Fin {
-				msg := make([]byte, len(assemPayload))
-				copy(msg, assemPayload)
+				msg := assemPayload
 				assembling = false
 				assemPayload = assemPayload[:0]
 				if err := flushMessage(assemOpcode, msg); err != nil {

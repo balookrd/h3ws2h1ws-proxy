@@ -29,6 +29,33 @@ type Proxy struct {
 	active     int64
 }
 
+type websocketBufferPool struct {
+	pool sync.Pool
+}
+
+func newWebsocketBufferPool(bufSize int) *websocketBufferPool {
+	return &websocketBufferPool{pool: sync.Pool{New: func() any {
+		b := make([]byte, bufSize)
+		return &b
+	}}}
+}
+
+func (p *websocketBufferPool) Get() interface{} {
+	return p.pool.Get()
+}
+
+func (p *websocketBufferPool) Put(x interface{}) {
+	switch b := x.(type) {
+	case *[]byte:
+		p.pool.Put(b)
+	case []byte:
+		bb := b
+		p.pool.Put(&bb)
+	}
+}
+
+var backendWriteBufferPool = newWebsocketBufferPool(64 << 10)
+
 func (p *Proxy) debugf(format string, args ...any) {
 	if p.Debug {
 		log.Printf("[debug] "+format, args...)
@@ -131,6 +158,7 @@ func (p *Proxy) HandleH3WebSocket(w http.ResponseWriter, r *http.Request) {
 		Proxy:             http.ProxyFromEnvironment,
 		ReadBufferSize:    64 << 10,
 		WriteBufferSize:   64 << 10,
+		WriteBufferPool:   backendWriteBufferPool,
 		HandshakeTimeout:  10 * time.Second,
 		EnableCompression: false,
 	}

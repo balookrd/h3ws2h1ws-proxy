@@ -1,19 +1,22 @@
-# syntax=docker/dockerfile:1
+FROM golang:1.25.1-alpine AS build
 
-FROM golang:1.25-alpine AS builder
 WORKDIR /src
 
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/h3ws2h1ws-proxy ./cmd/h3ws2h1ws-proxy
 
-FROM alpine:3.20
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -trimpath -ldflags="-s -w" \
+    -o /out/ws-quic-proxy ./cmd/ws-quic-proxy
+
+FROM gcr.io/distroless/static-debian12
+
 WORKDIR /app
 
-RUN apk add --no-cache ca-certificates openssl
+ENV GODEBUG="http2xconnect=1"
 
-COPY --from=builder /out/h3ws2h1ws-proxy /app/h3ws2h1ws-proxy
+COPY --from=build /out/ws-quic-proxy /app/ws-quic-proxy
 
-ENTRYPOINT ["/app/h3ws2h1ws-proxy"]
+ENTRYPOINT ["/app/ws-quic-proxy"]
