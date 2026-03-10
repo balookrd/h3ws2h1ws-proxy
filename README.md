@@ -1,86 +1,93 @@
 # h3ws2h1ws-proxy
 
-Прокси-сервер для WebSocket over HTTP/3 (RFC 9220) на входе и классического WebSocket over HTTP/1.1 на backend.
+A proxy server that accepts **WebSocket over HTTP/3** (RFC 9220 Extended CONNECT) on ingress and forwards traffic to a classic **WebSocket over HTTP/1.1** backend.
 
-## Что умеет проект
+## Features
 
-- Принимать WebSocket-подключения через **HTTP/3 extended CONNECT**.
-- Проксировать трафик между клиентом (H3 WS) и backend-сервисом (`ws://` или `wss://`).
-- Ограничивать размер:
-  - отдельного WebSocket frame (`max-frame`),
-  - итогового сообщения (`max-message`).
-- Ограничивать общее число одновременных сессий (`max-conns`).
-- Проксировать control frames (`ping`, `pong`, `close`) и корректно завершать сессии.
-- Отдавать Prometheus-метрики на отдельном HTTP endpoint (`/metrics`).
-- Отдавать health-check endpoints для проверки живости (`/health/tcp`, `/health/udp`).
+- Accepts WebSocket sessions over **HTTP/3 Extended CONNECT**.
+- Proxies bidirectional traffic between H3 clients and backend `ws://` / `wss://` services.
+- Enforces limits for:
+  - single WebSocket frame size (`-max-frame`),
+  - assembled WebSocket message size (`-max-message`),
+  - total concurrent sessions (`-max-conns`).
+- Proxies control frames (`ping`, `pong`, `close`) and closes sessions gracefully.
+- Exposes Prometheus metrics on a dedicated endpoint (`/metrics`).
+- Exposes health check endpoints (`/health/tcp`, `/health/udp`).
 
-## Архитектура и назначение модулей
+## Throughput improvements in this version
+
+- Added a shared Gorilla WebSocket **write buffer pool** for backend connections to reduce allocations and GC pressure under high concurrency.
+- Increased the H3 frame reader buffer from `64 KiB` to `256 KiB` to reduce read overhead on large/fragmented payload streams.
+- Removed an extra allocation/copy when forwarding reassembled fragmented messages from H3 to backend.
+- Kept backend per-message compression disabled to reduce CPU usage at high RPS.
+
+## Project structure
 
 ### `cmd/h3ws2h1ws-proxy/main.go`
-Минимальная точка входа: вызывает `app.Run()` и завершает процесс при ошибке.
+Minimal entrypoint: calls `app.Run()` and exits on error.
 
 ### `internal/run.go`
-Bootstrap приложения:
-- парсинг флагов,
-- валидация backend URL,
-- запуск metrics endpoint,
-- создание и запуск HTTP/3 сервера.
+Application bootstrap:
+- parses flags,
+- validates backend URL,
+- starts metrics endpoint,
+- creates and starts the HTTP/3 server.
 
 ### `internal/config/config.go`
-Содержит:
-- `Config` — конфигурация процесса (адреса, лимиты, таймауты),
-- `Limits` — runtime-лимиты прокси,
-- `DefaultTLSConfig()` — TLS 1.3 + ALPN для HTTP/3.
+Contains:
+- `Config` — process configuration,
+- `Limits` — runtime proxy limits,
+- `DefaultTLSConfig()` — TLS 1.3 + ALPN for HTTP/3.
 
 ### `internal/metrics/metrics.go`
-Определяет и регистрирует Prometheus-метрики:
-- активные сессии,
-- принятые/отклонённые подключения,
-- ошибки по стадиям,
-- объём и число проксируемых сообщений,
+Defines and registers Prometheus metrics for:
+- active sessions,
+- accepted/rejected connections,
+- stage-specific errors,
+- proxied bytes and messages,
 - control frames,
-- дропы из-за лимитов.
+- oversize drops.
 
 ### `internal/proxy/proxy.go`
-Содержит основную логику установки сессии:
-- проверка RFC9220-заголовков,
-- ответ handshake (`Sec-WebSocket-Accept`),
-- dial backend WS,
-- запуск двунаправленных pump-потоков,
-- жизненный цикл сессии и обработка ошибок.
+Core session handling:
+- RFC9220 header checks,
+- handshake response (`Sec-WebSocket-Accept`),
+- backend WS dial,
+- bidirectional pump goroutines,
+- session lifecycle and errors.
 
 ### `internal/proxy/pumps.go`
-Логика передачи данных:
-- `pumpH3ToBackend` — из H3-потока в backend WebSocket,
-- `pumpBackendToH3` — из backend WebSocket в H3-поток.
+Data transfer logic:
+- `pumpH3ToBackend` — from H3 stream to backend WebSocket,
+- `pumpBackendToH3` — from backend WebSocket to H3 stream.
 
-Включает:
-- сборку фрагментированных сообщений,
-- применение таймаутов,
-- реакцию на `ping/pong/close`,
-- проверки лимитов размеров.
+Includes:
+- fragmented message assembly,
+- timeout handling,
+- `ping/pong/close` handling,
+- size limit enforcement.
 
 ### `internal/ws/framing.go`
-Низкоуровневая реализация RFC6455:
-- чтение frame (`ReadFrame`),
-- запись data/control/close frame,
-- фрагментация больших payload,
-- маскирование/демаскирование,
-- парсинг payload close frame.
+Low-level RFC6455 framing:
+- frame read (`ReadFrame`),
+- data/control/close frame write,
+- large payload fragmentation,
+- mask/unmask,
+- close payload parsing.
 
 ### `internal/ws/utils.go`
-Вспомогательные функции:
-- `ComputeAccept` — расчёт `Sec-WebSocket-Accept`,
-- `PickFirstToken` — выбор первого subprotocol,
-- `IsNetClose` — эвристика «нормального» закрытия соединения.
+Helpers:
+- `ComputeAccept` — `Sec-WebSocket-Accept` calculation,
+- `PickFirstToken` — first subprotocol selection,
+- `IsNetClose` — heuristic for normal connection close.
 
-## Запуск
+## Run
 
-### Требования
+### Requirements
 - Go 1.25+
-- TLS-сертификат и ключ (`cert.pem`, `key.pem`) для HTTP/3 сервера.
+- TLS certificate and key (`cert.pem`, `key.pem`) for the HTTP/3 server.
 
-### Пример
+### Example
 
 ```bash
 go run ./cmd/h3ws2h1ws-proxy \
@@ -92,7 +99,7 @@ go run ./cmd/h3ws2h1ws-proxy \
   -metrics 127.0.0.1:9090
 ```
 
-### Пример запуска в Docker
+### Docker example
 
 ```bash
 docker build -t h3ws2h1ws-proxy:local .
@@ -111,31 +118,31 @@ docker run --rm \
   -metrics :9090
 ```
 
-> Для Linux при необходимости добавьте `--add-host=host.docker.internal:host-gateway`, чтобы контейнер мог достучаться до backend на хосте.
+> On Linux, you may need `--add-host=host.docker.internal:host-gateway` so the container can reach backend services on the host.
 
-## Основные флаги
+## Main flags
 
-- `-listen` — UDP адрес HTTP/3 сервера (по умолчанию `:443`)
-- `-cert` / `-key` — TLS сертификат и ключ
-- `-backend` — URL backend WebSocket (`ws://` или `wss://`) без пути
-  - Путь и query всегда берутся из входящего запроса (например, `/ws/tcp?x=1` → `ws://backend/ws/tcp?x=1`).
-- `-path` — regexp-маска пути для RFC9220 CONNECT (по умолчанию `^/ws$`)
-- `-metrics` — адрес endpoint метрик (по умолчанию выключен; пустое значение отключает сервер метрик)
-- `-max-frame` — максимум байт в одном frame
-- `-max-message` — максимум байт в одном собранном сообщении
-- `-max-conns` — максимум одновременных сессий
-- `-read-timeout` / `-write-timeout` — таймауты чтения/записи
-- `-debug` — включает подробные debug-логи по QUIC/HTTP3 handshake и потоку проксирования (кадры/сообщения/ошибки)
+- `-listen` — UDP address for the HTTP/3 server (default `:443`)
+- `-cert` / `-key` — TLS certificate and key
+- `-backend` — backend WebSocket URL (`ws://` or `wss://`) without path
+  - Path and query are always taken from incoming requests.
+- `-path` — regexp for RFC9220 CONNECT path validation (default `^/ws$`)
+- `-metrics` — metrics endpoint address (disabled by default)
+- `-max-frame` — maximum bytes in a single frame
+- `-max-message` — maximum bytes in an assembled message
+- `-max-conns` — maximum concurrent sessions
+- `-read-timeout` / `-write-timeout` — read/write timeouts
+- `-debug` — verbose debug logs for handshake and proxy traffic
 
-## Метрики
+## Metrics
 
-Endpoint: `http://<metrics-addr>/metrics` (доступен только если задан `-metrics`)
+Endpoint: `http://<metrics-addr>/metrics` (available only if `-metrics` is set)
 
-Health-check endpoints (на основном HTTP/3 listener):
-- `/health/tcp` → для `GET`: `200 OK` + `ok`; для `CONNECT`: `200 OK` (без websocket-заголовков/кадров)
-- `/health/udp` → для `GET`: `200 OK` + `ok`; для `CONNECT`: `200 OK` (без websocket-заголовков/кадров)
+Health check endpoints (main HTTP/3 listener):
+- `/health/tcp` → `GET`: `200 OK` + `ok`; `CONNECT`: `200 OK`
+- `/health/udp` → `GET`: `200 OK` + `ok`; `CONNECT`: `200 OK`
 
-Ключевые метрики:
+Key metrics:
 - `h3ws_proxy_active_sessions`
 - `h3ws_proxy_accepted_total`
 - `h3ws_proxy_rejected_total{reason=...}`
@@ -149,79 +156,56 @@ Health-check endpoints (на основном HTTP/3 listener):
 - `h3ws_proxy_control_frames_total{type=...}`
 - `h3ws_proxy_oversize_drops_total{kind=...}`
 
-
-## Тюнинг под высокую нагрузку
-
-В текущей версии включены базовые оптимизации для production-нагрузки:
-
-- увеличены лимиты QUIC по входящим потокам и receive windows,
-- отключена per-message compression при dial в backend (меньше CPU под большим RPS),
-- увеличены буферы чтения/записи backend WebSocket dialer до 64 KiB,
-- добавлен timeout на backend WebSocket handshake,
-- увеличен буфер чтения H3 WebSocket frame-потока до 64 KiB.
-
-Для дальнейшего масштабирования в real-world трафике рекомендуется:
-
-- запускать несколько инстансов за L4/L7 балансировщиком,
-- подбирать `-max-conns`, `-max-frame`, `-max-message` под профиль клиентов,
-- мониторить p95/p99 latency и `h3ws_proxy_errors_total{stage="session"}`,
-- выносить backend WS в отдельный autoscaling-пул.
-
-
 ## Troubleshooting
 
-### Ошибка: `expected first frame to be a HEADERS frame`
+### Error: `expected first frame to be a HEADERS frame`
 
-Если в логах прокси видно:
+If you see logs such as:
 
 - `Application error 0x101 (local): expected first frame to be a HEADERS frame`
 - `read response headers failed ... expected first frame to be a HEADERS frame`
 
-это означает, что проблема возникает **до** обработки запроса приложением.
+this indicates a failure **before** the application request handler starts.
 
-Важно: в `quic-go` эта формулировка может появляться в двух случаях:
-- на request stream первым пришёл не `HEADERS`;
-- `HEADERS` пришёл, но header block/QPACK не декодируется корректно.
+In `quic-go`, this can happen when:
+- the first request stream frame is not `HEADERS`, or
+- `HEADERS` exists but header block/QPACK decoding fails.
 
-Для RFC 9114 / RFC 9220 корректный порядок на client-initiated bidirectional stream:
+Per RFC 9114 / RFC 9220, expected order on a client-initiated bidirectional stream:
+1. `HEADERS` (`:method=CONNECT` for Extended CONNECT)
+2. then `DATA` / WebSocket payload
 
-1. `HEADERS` (Extended CONNECT, `:method=CONNECT`)
-2. далее DATA / WebSocket payload
+Check on the client/gateway side:
+- real HTTP/3 framing is used,
+- request stream starts with `HEADERS`,
+- QPACK/header block is decoded correctly,
+- intermediate gateways do not rewrite the stream into an incompatible format.
 
-Что проверить на стороне клиента/шлюза:
-
-- используется именно HTTP/3 framing, а не «сырые» данные сразу в QUIC stream;
-- первым кадром request stream идёт `HEADERS`;
-- QPACK/заголовки декодируются сервером;
-- если используется промежуточный gateway, он не переписывает request stream в несовместимый формат.
-
-Прокси экспортирует метрики для этого класса проблем:
-
+Relevant metrics:
 - `h3ws_proxy_prerequest_close_total{reason="request_stream_invalid_first_frame_or_headers"}`
 - `h3ws_proxy_prerequest_close_total{reason=...}`
 - `h3ws_proxy_errors_total{stage="h3_framing"}`
 
 ## Docker + Grafana
 
-Добавлены файлы для локального observability-стека:
+Included files for local observability stack:
 
-- `Dockerfile` — сборка и запуск прокси в контейнере.
-- `docker-compose.yml` — запуск `h3ws-proxy`, `prometheus`, `grafana`.
-- `deploy/prometheus/prometheus.yml` — scrape-конфиг Prometheus.
+- `Dockerfile` — proxy container build/run.
+- `docker-compose.yml` — runs `h3ws-proxy`, `prometheus`, `grafana`.
+- `deploy/prometheus/prometheus.yml` — Prometheus scrape config.
 - `deploy/grafana/provisioning/datasources/prometheus.yml` — datasource provisioning.
-- `deploy/grafana/provisioning/dashboards/dashboards.yml` — auto-import dashboard.
-- `deploy/grafana/dashboards/h3ws-proxy-overview.json` — production-ready dashboard (SLO, трафик, размеры сообщений, ошибки).
+- `deploy/grafana/provisioning/dashboards/dashboards.yml` — dashboard auto-import.
+- `deploy/grafana/dashboards/h3ws-proxy-overview.json` — ready-to-use dashboard.
 
-Запуск:
+Run:
 
 ```bash
 docker compose up --build
 ```
 
-После запуска:
-
+After startup:
 - Grafana: `http://localhost:3000` (`admin/admin`)
 - Prometheus: `http://localhost:9091`
 - Proxy metrics: `http://localhost:9090/metrics`
 
-> В compose-конфигурации при первом старте автоматически генерируется self-signed TLS сертификат в `./certs`.
+> In the compose setup, a self-signed TLS certificate is generated automatically into `./certs` on first run.
