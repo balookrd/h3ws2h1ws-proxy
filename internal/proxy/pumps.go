@@ -17,6 +17,11 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const (
+	h3ReadBufferSize      = 64 << 10
+	maxRetainedBufferSize = 256 << 10
+)
+
 type sessionTrafficStats struct {
 	h3ToH1Bytes    uint64
 	h1ToH3Bytes    uint64
@@ -45,7 +50,7 @@ func debugWSPayload(enabled bool, flow string, payload []byte) {
 func pumpH3ToBackend(ctx context.Context, s io.ReadWriter, bws *websocket.Conn, lim config.Limits, st *sessionTrafficStats, debug bool, upstream, proto string) error {
 	_ = upstream
 	_ = proto
-	br := bufio.NewReaderSize(s, 256<<10)
+	br := bufio.NewReaderSize(s, h3ReadBufferSize)
 
 	var (
 		assembling   bool
@@ -152,7 +157,7 @@ func pumpH3ToBackend(ctx context.Context, s io.ReadWriter, bws *websocket.Conn, 
 			if f.Fin {
 				msg := assemPayload
 				assembling = false
-				assemPayload = assemPayload[:0]
+				assemPayload = releaseLargeBuffer(assemPayload)
 				if err := flushMessage(assemOpcode, msg); err != nil {
 					debugf(debug, "h3->h1 write reassembled message error: %v", err)
 					return err
@@ -192,6 +197,13 @@ func pumpH3ToBackend(ctx context.Context, s io.ReadWriter, bws *websocket.Conn, 
 			return io.EOF
 		}
 	}
+}
+
+func releaseLargeBuffer(buf []byte) []byte {
+	if cap(buf) > maxRetainedBufferSize {
+		return nil
+	}
+	return buf[:0]
 }
 
 func pumpBackendToH3(ctx context.Context, bws *websocket.Conn, s io.Writer, lim config.Limits, st *sessionTrafficStats, debug bool, upstream, proto string) error {

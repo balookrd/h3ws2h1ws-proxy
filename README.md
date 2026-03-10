@@ -17,7 +17,7 @@ A proxy server that accepts **WebSocket over HTTP/3** (RFC 9220 Extended CONNECT
 ## Throughput improvements in this version
 
 - Added a shared Gorilla WebSocket **write buffer pool** for backend connections to reduce allocations and GC pressure under high concurrency.
-- Increased the H3 frame reader buffer from `64 KiB` to `256 KiB` to reduce read overhead on large/fragmented payload streams.
+- Reduced per-session H3 frame reader buffer to `64 KiB` and release large message assembly buffers after flush to lower steady-state memory usage.
 - Removed an extra allocation/copy when forwarding reassembled fragmented messages from H3 to backend.
 - Kept backend per-message compression disabled to reduce CPU usage at high RPS.
 
