@@ -1,17 +1,44 @@
 {
   "annotations": {
-    "list": []
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
   },
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
-  "id": null,
+  "id": 0,
   "links": [],
   "panels": [
     {
       "datasource": "$datasource",
       "fieldConfig": {
         "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
           "unit": "short"
         },
         "overrides": []
@@ -28,6 +55,7 @@
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -35,8 +63,11 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
       },
+      "pluginVersion": "12.3.2",
       "targets": [
         {
           "expr": "h3ws_proxy_active_sessions{instance=~\"$instance\"}",
@@ -50,6 +81,20 @@
       "datasource": "$datasource",
       "fieldConfig": {
         "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
           "unit": "ops"
         },
         "overrides": []
@@ -66,6 +111,7 @@
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -73,8 +119,11 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
       },
+      "pluginVersion": "12.3.2",
       "targets": [
         {
           "expr": "rate(h3ws_proxy_accepted_total{instance=~\"$instance\"}[$__rate_interval])",
@@ -88,8 +137,24 @@
       "datasource": "$datasource",
       "fieldConfig": {
         "defaults": {
-          "unit": "percentunit",
-          "decimals": 3
+          "decimals": 3,
+          "mappings": [],
+          "max": 1,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "percentunit"
         },
         "overrides": []
       },
@@ -105,6 +170,7 @@
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -112,8 +178,11 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
       },
+      "pluginVersion": "12.3.2",
       "targets": [
         {
           "expr": "sum(rate(h3ws_proxy_rejected_total{instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(h3ws_proxy_accepted_total{instance=~\"$instance\"}[$__rate_interval])) + sum(rate(h3ws_proxy_rejected_total{instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
@@ -127,8 +196,24 @@
       "datasource": "$datasource",
       "fieldConfig": {
         "defaults": {
-          "unit": "percentunit",
-          "decimals": 3
+          "decimals": 3,
+          "mappings": [],
+          "max": 1,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "percentunit"
         },
         "overrides": []
       },
@@ -144,6 +229,7 @@
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -151,8 +237,11 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
       },
+      "pluginVersion": "12.3.2",
       "targets": [
         {
           "expr": "sum(rate(h3ws_proxy_errors_total{instance=~\"$instance\"}[$__rate_interval])) / clamp_min(sum(rate(h3ws_proxy_accepted_total{instance=~\"$instance\"}[$__rate_interval])), 1e-9)",
@@ -166,6 +255,20 @@
       "datasource": "$datasource",
       "fieldConfig": {
         "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
           "unit": "s"
         },
         "overrides": []
@@ -182,6 +285,7 @@
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -189,8 +293,11 @@
           "fields": "",
           "values": false
         },
-        "textMode": "value"
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
       },
+      "pluginVersion": "12.3.2",
       "targets": [
         {
           "expr": "histogram_quantile(0.95, sum(rate(h3ws_proxy_session_duration_seconds_bucket{instance=~\"$instance\"}[$__rate_interval])) by (le))",
@@ -204,6 +311,20 @@
       "datasource": "$datasource",
       "fieldConfig": {
         "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
           "unit": "s"
         },
         "overrides": []
@@ -220,6 +341,7 @@
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -227,8 +349,11 @@
           "fields": "",
           "values": false
         },
-        "textMode": "value"
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
       },
+      "pluginVersion": "12.3.2",
       "targets": [
         {
           "expr": "histogram_quantile(0.99, sum(rate(h3ws_proxy_session_duration_seconds_bucket{instance=~\"$instance\"}[$__rate_interval])) by (le))",
@@ -242,6 +367,57 @@
       "datasource": "$datasource",
       "fieldConfig": {
         "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
           "unit": "Bps"
         },
         "overrides": []
@@ -255,19 +431,24 @@
       "id": 7,
       "options": {
         "legend": {
+          "calcs": [],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "multi",
           "sort": "desc"
         }
       },
+      "pluginVersion": "12.3.2",
       "targets": [
         {
-          "expr": "sum by (dir) (rate(h3ws_proxy_bytes_total{instance=~\"$instance\"}[$__rate_interval]))",
+          "editorMode": "code",
+          "expr": "sum by (instance,dir) (rate(h3ws_proxy_bytes_total{instance=~\"$instance\"}[$__rate_interval]))",
           "legendFormat": "{{instance}}/{{dir}}",
+          "range": true,
           "refId": "A"
         }
       ],
@@ -278,6 +459,57 @@
       "datasource": "$datasource",
       "fieldConfig": {
         "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
           "unit": "ops"
         },
         "overrides": []
@@ -291,19 +523,24 @@
       "id": 8,
       "options": {
         "legend": {
+          "calcs": [],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "multi",
           "sort": "desc"
         }
       },
+      "pluginVersion": "12.3.2",
       "targets": [
         {
-          "expr": "sum by (dir, opcode) (rate(h3ws_proxy_frames_total{instance=~\"$instance\"}[$__rate_interval]))",
+          "editorMode": "code",
+          "expr": "sum by (instance,dir, opcode) (rate(h3ws_proxy_frames_total{instance=~\"$instance\"}[$__rate_interval]))",
           "legendFormat": "{{instance}}/{{dir}}/{{opcode}}",
+          "range": true,
           "refId": "A"
         }
       ],
@@ -314,6 +551,57 @@
       "datasource": "$datasource",
       "fieldConfig": {
         "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
           "unit": "ops"
         },
         "overrides": []
@@ -327,19 +615,24 @@
       "id": 9,
       "options": {
         "legend": {
+          "calcs": [],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "multi",
           "sort": "desc"
         }
       },
+      "pluginVersion": "12.3.2",
       "targets": [
         {
-          "expr": "sum by (dir, type) (rate(h3ws_proxy_messages_total{instance=~\"$instance\"}[$__rate_interval]))",
+          "editorMode": "code",
+          "expr": "sum by (instance, dir, type) (rate(h3ws_proxy_messages_total{instance=~\"$instance\"}[$__rate_interval]))",
           "legendFormat": "{{instance}}/{{dir}}/{{type}}",
+          "range": true,
           "refId": "A"
         }
       ],
@@ -350,6 +643,57 @@
       "datasource": "$datasource",
       "fieldConfig": {
         "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
           "unit": "bytes"
         },
         "overrides": []
@@ -363,24 +707,31 @@
       "id": 10,
       "options": {
         "legend": {
+          "calcs": [],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "multi",
           "sort": "desc"
         }
       },
+      "pluginVersion": "12.3.2",
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum(rate(h3ws_proxy_message_size_bytes_bucket{instance=~\"$instance\"}[$__rate_interval])) by (le, dir, type))",
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum(rate(h3ws_proxy_message_size_bytes_bucket{instance=~\"$instance\"}[$__rate_interval])) by (instance,le, dir, type))",
           "legendFormat": "{{instance}}/p95 {{dir}}/{{type}}",
+          "range": true,
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.99, sum(rate(h3ws_proxy_message_size_bytes_bucket{instance=~\"$instance\"}[$__rate_interval])) by (le, dir, type))",
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum(rate(h3ws_proxy_message_size_bytes_bucket{instance=~\"$instance\"}[$__rate_interval])) by (instance,le, dir, type))",
           "legendFormat": "{{instance}}/p99 {{dir}}/{{type}}",
+          "range": true,
           "refId": "B"
         }
       ],
@@ -391,6 +742,57 @@
       "datasource": "$datasource",
       "fieldConfig": {
         "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
           "unit": "bytes"
         },
         "overrides": []
@@ -404,24 +806,31 @@
       "id": 11,
       "options": {
         "legend": {
+          "calcs": [],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "multi",
           "sort": "desc"
         }
       },
+      "pluginVersion": "12.3.2",
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum(rate(h3ws_proxy_session_traffic_bytes_bucket{instance=~\"$instance\"}[$__rate_interval])) by (le, dir))",
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum(rate(h3ws_proxy_session_traffic_bytes_bucket{instance=~\"$instance\"}[$__rate_interval])) by (instance,le, dir))",
           "legendFormat": "{{instance}}/p95 {{dir}}",
+          "range": true,
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.99, sum(rate(h3ws_proxy_session_traffic_bytes_bucket{instance=~\"$instance\"}[$__rate_interval])) by (le, dir))",
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum(rate(h3ws_proxy_session_traffic_bytes_bucket{instance=~\"$instance\"}[$__rate_interval])) by (instance,le, dir))",
           "legendFormat": "{{instance}}/p99 {{dir}}",
+          "range": true,
           "refId": "B"
         }
       ],
@@ -432,6 +841,57 @@
       "datasource": "$datasource",
       "fieldConfig": {
         "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
           "unit": "ops"
         },
         "overrides": []
@@ -445,29 +905,38 @@
       "id": 12,
       "options": {
         "legend": {
+          "calcs": [],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "multi",
           "sort": "desc"
         }
       },
+      "pluginVersion": "12.3.2",
       "targets": [
         {
-          "expr": "sum by (reason) (rate(h3ws_proxy_rejected_total{instance=~\"$instance\"}[$__rate_interval]))",
+          "editorMode": "code",
+          "expr": "sum by (instance,reason) (rate(h3ws_proxy_rejected_total{instance=~\"$instance\"}[$__rate_interval]))",
           "legendFormat": "{{instance}}/rejected/{{reason}}",
+          "range": true,
           "refId": "A"
         },
         {
-          "expr": "sum by (stage) (rate(h3ws_proxy_errors_total{instance=~\"$instance\"}[$__rate_interval]))",
+          "editorMode": "code",
+          "expr": "sum by (instance,stage) (rate(h3ws_proxy_errors_total{instance=~\"$instance\"}[$__rate_interval]))",
           "legendFormat": "{{instance}}/errors/{{stage}}",
+          "range": true,
           "refId": "B"
         },
         {
-          "expr": "sum by (kind) (rate(h3ws_proxy_oversize_drops_total{instance=~\"$instance\"}[$__rate_interval]))",
+          "editorMode": "code",
+          "expr": "sum by (instance,kind) (rate(h3ws_proxy_oversize_drops_total{instance=~\"$instance\"}[$__rate_interval]))",
           "legendFormat": "{{instance}}/oversize/{{kind}}",
+          "range": true,
           "refId": "C"
         }
       ],
@@ -475,9 +944,9 @@
       "type": "timeseries"
     }
   ],
+  "preload": false,
   "refresh": "10s",
-  "schemaVersion": 39,
-  "style": "dark",
+  "schemaVersion": 42,
   "tags": [
     "h3",
     "websocket",
@@ -487,26 +956,35 @@
   "templating": {
     "list": [
       {
-        "name": "datasource",
+        "current": {
+          "text": "prometheus",
+          "value": "adnsc1wi03doga"
+        },
+        "includeAll": false,
         "label": "Datasource",
-        "type": "datasource",
+        "name": "datasource",
+        "options": [],
         "query": "prometheus",
         "refresh": 1,
-        "hide": 0,
-        "includeAll": false,
-        "multi": false
+        "type": "datasource"
       },
       {
-        "name": "instance",
-        "label": "Instance",
-        "type": "query",
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": [
+            "$__all"
+          ]
+        },
         "datasource": "$datasource",
+        "includeAll": true,
+        "label": "Instance",
+        "multi": true,
+        "name": "instance",
+        "options": [],
         "query": "label_values(h3ws_proxy_active_sessions{instance=~\".+\"}, instance)",
         "refresh": 2,
-        "hide": 0,
-        "includeAll": true,
-        "multi": true,
-        "allValue": ".*"
+        "type": "query"
       }
     ]
   },
@@ -516,8 +994,7 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "H3WS Proxy Production Overview",
+  "title": "H3WS Proxy",
   "uid": "h3ws-proxy-overview",
-  "version": 3,
-  "weekStart": ""
+  "version": 4
 }
