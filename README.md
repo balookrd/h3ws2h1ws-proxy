@@ -1,4 +1,4 @@
-# h3ws2h1ws-proxy
+# ws-quic-proxy
 
 A proxy server that accepts **WebSocket over HTTP/3** (RFC 9220 Extended CONNECT) on ingress and forwards traffic to a classic **WebSocket over HTTP/1.1** backend.
 
@@ -23,7 +23,7 @@ A proxy server that accepts **WebSocket over HTTP/3** (RFC 9220 Extended CONNECT
 
 ## Project structure
 
-### `cmd/h3ws2h1ws-proxy/main.go`
+### `cmd/ws-quic-proxy/main.go`
 Minimal entrypoint: calls `app.Run()` and exits on error.
 
 ### `internal/run.go`
@@ -90,7 +90,7 @@ Helpers:
 ### Example
 
 ```bash
-go run ./cmd/h3ws2h1ws-proxy \
+go run ./cmd/ws-quic-proxy \
   -listen :443 \
   -cert cert.pem \
   -key key.pem \
@@ -102,14 +102,14 @@ go run ./cmd/h3ws2h1ws-proxy \
 ### Docker example
 
 ```bash
-docker build -t h3ws2h1ws-proxy:local .
+docker build -t ws-quic-proxy:local .
 
 docker run --rm \
   -p 443:443/udp \
   -p 9090:9090 \
   -v "$(pwd)/cert.pem:/app/cert.pem:ro" \
   -v "$(pwd)/key.pem:/app/key.pem:ro" \
-  h3ws2h1ws-proxy:local \
+  ws-quic-proxy:local \
   -listen :443 \
   -cert /app/cert.pem \
   -key /app/key.pem \
