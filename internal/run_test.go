@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -95,5 +96,34 @@ func TestRequestPath(t *testing.T) {
 	req2 := httptest.NewRequest(http.MethodGet, "/health/tcp", nil)
 	if got, want := requestPath(req2), "/health/tcp"; got != want {
 		t.Fatalf("requestPath origin: got %q, want %q", got, want)
+	}
+}
+
+func TestMetricsHandlerExposesGoRuntimeMetrics(t *testing.T) {
+	t.Parallel()
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+
+	metricsHandler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want %d", rr.Code, http.StatusOK)
+	}
+
+	body := rr.Body.String()
+	metricNames := []string{
+		"h3ws_proxy_go_mem_alloc_bytes",
+		"h3ws_proxy_go_heap_inuse_bytes",
+		"h3ws_proxy_go_heap_idle_bytes",
+		"h3ws_proxy_go_heap_released_bytes",
+		"h3ws_proxy_go_mem_sys_bytes",
+		"h3ws_proxy_go_gc_last_pause_seconds",
+		"h3ws_proxy_go_gc_cycles_total",
+	}
+	for _, name := range metricNames {
+		if !strings.Contains(body, name) {
+			t.Fatalf("expected metric %q to be exposed", name)
+		}
 	}
 }

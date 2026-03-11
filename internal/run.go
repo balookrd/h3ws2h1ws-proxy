@@ -213,7 +213,7 @@ func parseConfig() config.Config {
 func startMetricsServer(addr string) {
 	go func() {
 		mux := http.NewServeMux()
-		mux.Handle("/metrics", promhttp.Handler())
+		mux.Handle("/metrics", metricsHandler())
 		srv := &http.Server{
 			Addr:              addr,
 			Handler:           mux,
@@ -224,6 +224,14 @@ func startMetricsServer(addr string) {
 			log.Printf("metrics server error: %v", err)
 		}
 	}()
+}
+
+func metricsHandler() http.Handler {
+	promHandler := promhttp.Handler()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		metrics.UpdateGoRuntimeMetrics()
+		promHandler.ServeHTTP(w, r)
+	})
 }
 
 func defaultQUICConfig(debug bool, connHadRequest, connRemoteAddr *sync.Map) *quic.Config {

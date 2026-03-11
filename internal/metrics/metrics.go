@@ -1,6 +1,10 @@
 package metrics
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"runtime"
+
+	"github.com/prometheus/client_golang/prometheus"
+)
 
 var (
 	ActiveSessions = prometheus.NewGauge(prometheus.GaugeOpts{
@@ -58,6 +62,34 @@ var (
 		Name: "h3ws_proxy_prerequest_close_total",
 		Help: "QUIC connections closed before any HTTP request reached handler",
 	}, []string{"reason"})
+	GoMemAllocBytes = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "h3ws_proxy_go_mem_alloc_bytes",
+		Help: "Bytes of allocated heap objects",
+	})
+	GoHeapInuseBytes = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "h3ws_proxy_go_heap_inuse_bytes",
+		Help: "Bytes in in-use heap spans",
+	})
+	GoHeapIdleBytes = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "h3ws_proxy_go_heap_idle_bytes",
+		Help: "Bytes in idle (unused) heap spans",
+	})
+	GoHeapReleasedBytes = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "h3ws_proxy_go_heap_released_bytes",
+		Help: "Bytes of physical memory returned to the OS",
+	})
+	GoMemSysBytes = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "h3ws_proxy_go_mem_sys_bytes",
+		Help: "Bytes obtained from the OS",
+	})
+	GoGCLastPauseSeconds = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "h3ws_proxy_go_gc_last_pause_seconds",
+		Help: "Last GC stop-the-world pause duration in seconds",
+	})
+	GoGCCyclesTotal = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "h3ws_proxy_go_gc_cycles_total",
+		Help: "Total completed GC cycles",
+	})
 )
 
 func init() {
@@ -66,5 +98,26 @@ func init() {
 		Bytes, Messages, Frames, MessageSize,
 		SessionDuration, SessionTrafficBytes,
 		Ctrl, OversizeDrops, PreRequestClose,
+		GoMemAllocBytes, GoHeapInuseBytes, GoHeapIdleBytes,
+		GoHeapReleasedBytes, GoMemSysBytes,
+		GoGCLastPauseSeconds, GoGCCyclesTotal,
 	)
+}
+
+func UpdateGoRuntimeMetrics() {
+	var stats runtime.MemStats
+	runtime.ReadMemStats(&stats)
+
+	GoMemAllocBytes.Set(float64(stats.Alloc))
+	GoHeapInuseBytes.Set(float64(stats.HeapInuse))
+	GoHeapIdleBytes.Set(float64(stats.HeapIdle))
+	GoHeapReleasedBytes.Set(float64(stats.HeapReleased))
+	GoMemSysBytes.Set(float64(stats.Sys))
+
+	lastPauseNs := uint64(0)
+	if stats.NumGC > 0 {
+		lastPauseNs = stats.PauseNs[(stats.NumGC-1)%uint32(len(stats.PauseNs))]
+	}
+	GoGCLastPauseSeconds.Set(float64(lastPauseNs) / 1e9)
+	GoGCCyclesTotal.Set(float64(stats.NumGC))
 }
